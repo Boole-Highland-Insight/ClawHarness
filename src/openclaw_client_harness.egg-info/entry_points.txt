@@ -1,0 +1,2 @@
+[console_scripts]
+openclaw-harness = openclaw_harness.cli:main

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import shutil
 import platform
 import sys
 from dataclasses import asdict
@@ -237,6 +238,16 @@ def build_preflight_payload(
     }
 
 
+def prune_run_artifacts(*, run_dir: Path, keep_files: set[str]) -> None:
+    for path in run_dir.iterdir():
+        if path.name in keep_files:
+            continue
+        if path.is_dir():
+            shutil.rmtree(path, ignore_errors=True)
+        else:
+            path.unlink(missing_ok=True)
+
+
 async def run_scenario(
     scenario: ScenarioConfig,
     *,
@@ -337,4 +348,6 @@ async def run_scenario(
     summary["started_at"] = started_at
     summary["finished_at"] = iso_now()
     write_summary(run_dir / "summary.json", summary)
+    if scenario.artifacts.summary_only:
+        prune_run_artifacts(run_dir=run_dir, keep_files={"summary.json"})
     return run_dir

@@ -42,6 +42,11 @@ class CollectorsConfig:
 
 
 @dataclass(slots=True)
+class ArtifactsConfig:
+    summary_only: bool = False
+
+
+@dataclass(slots=True)
 class RuntimeConfig:
     kind: Literal["docker", "host_direct"] = "docker"
     image: str = "openclaw:bench-local"
@@ -98,6 +103,7 @@ class ScenarioConfig:
     client: ClientConfig = field(default_factory=ClientConfig)
     load: LoadConfig = field(default_factory=LoadConfig)
     collectors: CollectorsConfig = field(default_factory=CollectorsConfig)
+    artifacts: ArtifactsConfig = field(default_factory=ArtifactsConfig)
     scenario_path: str = ""
 
     def to_dict(self) -> dict[str, Any]:
@@ -122,6 +128,7 @@ def load_scenario(path: Path) -> ScenarioConfig:
     _merge_dataclass(raw.get("runtime"), scenario.runtime)
     _merge_dataclass(raw.get("client"), scenario.client)
     _merge_dataclass(raw.get("load"), scenario.load)
+    _merge_dataclass(raw.get("artifacts"), scenario.artifacts)
     collector_raw = raw.get("collectors", {})
     _merge_dataclass(collector_raw.get("docker_stats"), scenario.collectors.docker_stats)
     _merge_dataclass(collector_raw.get("pidstat"), scenario.collectors.pidstat)
