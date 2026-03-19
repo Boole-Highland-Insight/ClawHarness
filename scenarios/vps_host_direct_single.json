@@ -1,0 +1,44 @@
+{
+  "name": "vps-host-direct-single",
+  "runtime": {
+    "kind": "host_direct",
+    "host": "127.0.0.1",
+    "host_port": 18789,
+    "ws_url": "ws://127.0.0.1:18789",
+    "healthcheck_url": "http://127.0.0.1:18789/healthz",
+    "gateway_token": "replace-with-vps-gateway-token",
+    "host_pid": null,
+    "startup_timeout_sec": 30
+  },
+  "client": {
+    "role": "operator",
+    "message": "/context list",
+    "session_prefix": "vps-host-direct-single",
+    "session_mode": "per_worker",
+    "history_limit": 20,
+    "wait_timeout_ms": 15000,
+    "send_timeout_ms": 15000
+  },
+  "load": {
+    "concurrency": 1,
+    "requests_per_worker": 5,
+    "worker_stagger_ms": 0,
+    "request_pause_ms": 0
+  },
+  "collectors": {
+    "docker_stats": {
+      "enabled": false,
+      "interval_ms": 1000
+    },
+    "pidstat": {
+      "enabled": true,
+      "interval_sec": 1
+    },
+    "perf_stat": {
+      "enabled": true
+    },
+    "perf_record": {
+      "enabled": false
+    }
+  }
+}

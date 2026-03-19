@@ -1,0 +1,48 @@
+{
+  "name": "vps-docker-single",
+  "runtime": {
+    "kind": "docker",
+    "image": "openclaw:bench-vps",
+    "container_name_base": "openclaw-bench-vps",
+    "host": "127.0.0.1",
+    "host_port": 19189,
+    "container_port": 18789,
+    "gateway_bind": "lan",
+    "gateway_token": "replace-with-vps-gateway-token",
+    "build_image_if_missing": true,
+    "force_rebuild": false,
+    "skip_channels": true,
+    "startup_timeout_sec": 240
+  },
+  "client": {
+    "role": "operator",
+    "message": "/context list",
+    "session_prefix": "vps-docker-single",
+    "session_mode": "per_worker",
+    "history_limit": 20,
+    "wait_timeout_ms": 15000,
+    "send_timeout_ms": 15000
+  },
+  "load": {
+    "concurrency": 1,
+    "requests_per_worker": 5,
+    "worker_stagger_ms": 0,
+    "request_pause_ms": 0
+  },
+  "collectors": {
+    "docker_stats": {
+      "enabled": true,
+      "interval_ms": 1000
+    },
+    "pidstat": {
+      "enabled": true,
+      "interval_sec": 1
+    },
+    "perf_stat": {
+      "enabled": true
+    },
+    "perf_record": {
+      "enabled": false
+    }
+  }
+}
