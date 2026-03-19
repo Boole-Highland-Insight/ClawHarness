@@ -6,6 +6,7 @@ import sys
 from dataclasses import asdict
 from pathlib import Path
 from time import perf_counter_ns
+from typing import Any
 from uuid import uuid4
 
 from .collectors import build_collectors
@@ -77,7 +78,7 @@ async def execute_load(
                     send_started = perf_counter_ns()
                     send_response = await client.send_chat(
                         session_key=session_key,
-                        message=scenario.client.message,
+                        message=scenario.client.effective_message(),
                         run_id=run_id,
                         timeout_ms=scenario.client.send_timeout_ms,
                     )
@@ -113,6 +114,8 @@ async def execute_load(
                 records.append(
                     {
                         "scenario": scenario.name,
+                        "task_id": scenario.client.task_id,
+                        "task_name": scenario.client.task_name,
                         "worker_id": worker_id,
                         "request_index": request_index,
                         "session_key": session_key,
@@ -139,6 +142,99 @@ async def execute_load(
     tasks = [asyncio.create_task(worker(worker_id)) for worker_id in range(scenario.load.concurrency)]
     await asyncio.gather(*tasks)
     return records
+
+
+def build_preflight_payload(
+    *,
+    scenario: ScenarioConfig,
+    runtime_info,
+    runtime_manager,
+    collectors,
+) -> dict[str, Any]:
+    runtime_state = runtime_manager.dump_state()
+    healthcheck_url = None
+    if scenario.runtime.kind == "docker":
+        healthcheck_url = f"http://{scenario.runtime.host}:{scenario.runtime.host_port}/healthz"
+    elif runtime_state.get("healthcheck_url"):
+        healthcheck_url = str(runtime_state["healthcheck_url"])
+
+    checks: list[dict[str, Any]] = [
+        {
+            "name": "runtime_reachable",
+            "status": "ok",
+            "detail": "runtime start completed and healthcheck passed",
+        },
+        {
+            "name": "target_url",
+            "status": "ok",
+            "detail": runtime_info.url,
+        },
+    ]
+    if healthcheck_url:
+        checks.append(
+            {
+                "name": "healthcheck_url",
+                "status": "ok",
+                "detail": healthcheck_url,
+            },
+        )
+    if scenario.runtime.kind == "host_direct":
+        checks.append(
+            {
+                "name": "host_pid",
+                "status": "ok" if runtime_info.host_pid is not None else "warn",
+                "detail": (
+                    f"{runtime_info.host_pid} ({runtime_info.host_pid_source or 'configured'})"
+                    if runtime_info.host_pid is not None
+                    else "host PID auto-discovery failed; pidstat/perf host collectors will be skipped unless runtime.host_pid is set"
+                ),
+            },
+        )
+
+    collector_targets: list[dict[str, Any]] = []
+    for collector in collectors:
+        target = "none"
+        if collector.status.name == "docker_stats":
+            target = runtime_info.container_name or "container unavailable"
+        elif collector.status.name in {"pidstat", "perf_stat", "perf_record"}:
+            target = str(runtime_info.host_pid) if runtime_info.host_pid is not None else "host PID unavailable"
+        collector_targets.append(
+            {
+                "name": collector.status.name,
+                "enabled": collector.status.enabled,
+                "status": collector.status.status,
+                "detail": collector.status.detail,
+                "target": target,
+            },
+        )
+
+    warnings = [
+        str(check["detail"])
+        for check in checks
+        if check["status"] == "warn" and check.get("detail")
+    ]
+    warnings.extend(
+        str(collector["detail"])
+        for collector in collector_targets
+        if collector["status"] == "skipped" and collector.get("detail")
+    )
+
+    return {
+        "runtime_kind": runtime_info.kind,
+        "ready": all(check["status"] != "error" for check in checks),
+        "checked_at": iso_now(),
+        "target": {
+            "url": runtime_info.url,
+            "healthcheck_url": healthcheck_url,
+            "container_name": runtime_info.container_name,
+            "container_id": runtime_info.container_id,
+            "host_pid": runtime_info.host_pid,
+            "host_pid_source": runtime_info.host_pid_source,
+        },
+        "checks": checks,
+        "collectors": collector_targets,
+        "warnings": warnings,
+    }
 
 
 async def run_scenario(
@@ -168,6 +264,13 @@ async def run_scenario(
         container_name=runtime_info.container_name,
         host_pid=runtime_info.host_pid,
     )
+    preflight = build_preflight_payload(
+        scenario=scenario,
+        runtime_info=runtime_info,
+        runtime_manager=runtime_manager,
+        collectors=collectors,
+    )
+    write_json(run_dir / "preflight.json", preflight)
     for collector in collectors:
         collector.start()
 
@@ -192,7 +295,17 @@ async def run_scenario(
         runtime_manager.stop()
         meta = {
             "scenario": scenario.to_dict(),
+            "task": {
+                "source": "task_file" if scenario.client.task_file else "message",
+                "task_file": scenario.client.task_file,
+                "task_id": scenario.client.task_id,
+                "task_name": scenario.client.task_name,
+                "task_category": scenario.client.task_category,
+                "task_description": scenario.client.task_description,
+                "resolved_prompt": scenario.client.effective_message(),
+            },
             "environment": environment,
+            "preflight": preflight,
             "runtime": asdict(runtime_info),
             "runtime_manager": runtime_manager.dump_state(),
             "collectors": [collector.status.to_dict() for collector in collectors],
@@ -207,7 +320,19 @@ async def run_scenario(
 
     write_latency_csv(run_dir / "latency.csv", rows)
     summary = build_summary(rows, scenario_name=scenario.name)
+    summary["task"] = {
+        "source": "task_file" if scenario.client.task_file else "message",
+        "task_file": scenario.client.task_file,
+        "id": scenario.client.task_id,
+        "name": scenario.client.task_name,
+        "category": scenario.client.task_category,
+    }
     summary["environment"] = summarize_environment(environment)
+    summary["preflight"] = {
+        "ready": preflight["ready"],
+        "target": preflight["target"],
+        "warnings": preflight["warnings"],
+    }
     summary["collector_analysis"] = collector_analysis
     summary["started_at"] = started_at
     summary["finished_at"] = iso_now()

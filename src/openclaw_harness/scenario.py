@@ -5,6 +5,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
+from .task import load_task, resolve_task_path
+
 
 SESSION_MODES = ("per_worker", "per_request", "shared")
 
@@ -65,11 +67,20 @@ class RuntimeConfig:
 class ClientConfig:
     role: str = "operator"
     message: str = "/context list"
+    task_file: str = ""
+    task_id: str = ""
+    task_name: str = ""
+    task_category: str = ""
+    task_description: str = ""
+    resolved_prompt: str = ""
     session_prefix: str = "bench"
     session_mode: Literal["per_worker", "per_request", "shared"] = "per_worker"
     history_limit: int = 20
     wait_timeout_ms: int = 15000
     send_timeout_ms: int = 15000
+
+    def effective_message(self) -> str:
+        return self.resolved_prompt or self.message
 
 
 @dataclass(slots=True)
@@ -125,4 +136,17 @@ def load_scenario(path: Path) -> ScenarioConfig:
             f"invalid runtime.kind={scenario.runtime.kind!r}; expected 'docker' or 'host_direct'",
         )
     scenario.scenario_path = str(path.resolve())
+    if scenario.client.task_file.strip():
+        task_path = resolve_task_path(scenario.client.task_file, scenario_path=path.resolve())
+        task = load_task(task_path)
+        scenario.client.task_file = str(task_path)
+        scenario.client.task_id = task.id
+        scenario.client.task_name = task.name
+        scenario.client.task_category = task.category
+        scenario.client.task_description = task.description
+        scenario.client.resolved_prompt = task.prompt
+    else:
+        scenario.client.resolved_prompt = scenario.client.message.strip()
+    if not scenario.client.effective_message().strip():
+        raise ValueError("scenario must define client.message or client.task_file")
     return scenario

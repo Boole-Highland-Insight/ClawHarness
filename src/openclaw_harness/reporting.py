@@ -9,6 +9,8 @@ from .utils import summarize_ms, write_json
 
 LATENCY_FIELDS = [
     "scenario",
+    "task_id",
+    "task_name",
     "worker_id",
     "request_index",
     "session_key",
@@ -55,8 +57,14 @@ def build_summary(rows: list[dict[str, Any]], *, scenario_name: str) -> dict[str
             continue
         connect_by_worker[worker_id] = float(connect_latency_ms)
     connect_latency = list(connect_by_worker.values())
+    task_id = str(rows[0].get("task_id", "")) if rows else ""
+    task_name = str(rows[0].get("task_name", "")) if rows else ""
     return {
         "scenario": scenario_name,
+        "task": {
+            "id": task_id,
+            "name": task_name,
+        },
         "requests_total": len(rows),
         "requests_ok": len(success_rows),
         "requests_failed": len(rows) - len(success_rows),
