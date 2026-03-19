@@ -10,8 +10,8 @@
 - 将每次运行产物写入 `out/<timestamp>_<scenario>/`
 - 采集 `latency.csv`、`summary.json`、`meta.json`、`docker_stats.csv`
 - 在负载开始前写出 `preflight.json`，记录目标 URL、healthcheck、发现到的 PID，以及 collector 附着计划
-- 将 `pidstat`、`perf stat` 和 `perf record` 接成可选 collector
-- 把 `pidstat` 和 `perf stat` 的原始输出解析成结构化 CSV/JSON 报告
+- 将 `docker stats`、`pidstat`、`iostat`、`perf stat` 和 `perf record` 接成可选 collector
+- 把 `docker stats`、`pidstat`、`iostat` 和 `perf stat` 的原始输出解析成结构化 CSV/JSON 报告
 - 写出 `environment.json`，记录当前宿主机实际具备哪些观测能力
 - 支持从 `tasks/*.md` 读取真实任务式 prompt，模拟更接近实际使用的交互延迟
 
@@ -49,9 +49,15 @@ python -m openclaw_harness run --scenario scenarios/docker_single.json
 python -m openclaw_harness run --scenario scenarios/docker_multi.json
 python -m openclaw_harness run --scenario scenarios/docker_single_100_summary.json
 python -m openclaw_harness run --scenario scenarios/docker_multi_100_summary.json
+python -m openclaw_harness run --scenario scenarios/docker_single_resource_profile.json
+python -m openclaw_harness run --scenario scenarios/docker_multi_resource_profile.json
 python -m openclaw_harness run --scenario scenarios/docker_single_task_context.json
 python -m openclaw_harness run --scenario scenarios/docker_single_task_comprehension.json
 python -m openclaw_harness run --scenario scenarios/docker_multi_task_mix.json
+python -m openclaw_harness run --scenario scenarios/docker_single_task_semianalysis_100_summary.json
+python -m openclaw_harness run --scenario scenarios/docker_multi_task_semianalysis_100_summary.json
+python -m openclaw_harness run --scenario scenarios/docker_single_task_semianalysis_smoke.json
+python -m openclaw_harness run --scenario scenarios/docker_multi_task_semianalysis_smoke.json
 ```
 
 使用 `.deps` 回退方案：
@@ -63,8 +69,14 @@ python3 -m openclaw_harness run --scenario scenarios/docker_single.json --output
 python3 -m openclaw_harness run --scenario scenarios/docker_multi.json --output-root out
 python3 -m openclaw_harness run --scenario scenarios/docker_single_100_summary.json --output-root out
 python3 -m openclaw_harness run --scenario scenarios/docker_multi_100_summary.json --output-root out
+python3 -m openclaw_harness run --scenario scenarios/docker_single_resource_profile.json --output-root out
+python3 -m openclaw_harness run --scenario scenarios/docker_multi_resource_profile.json --output-root out
 python3 -m openclaw_harness run --scenario scenarios/docker_single_task_context.json --output-root out
 python3 -m openclaw_harness run --scenario scenarios/docker_multi_task_mix.json --output-root out
+python3 -m openclaw_harness run --scenario scenarios/docker_single_task_semianalysis_100_summary.json --output-root out
+python3 -m openclaw_harness run --scenario scenarios/docker_multi_task_semianalysis_100_summary.json --output-root out
+python3 -m openclaw_harness run --scenario scenarios/docker_single_task_semianalysis_smoke.json --output-root out
+python3 -m openclaw_harness run --scenario scenarios/docker_multi_task_semianalysis_smoke.json --output-root out
 ```
 
 VPS 场景模板：
@@ -123,7 +135,8 @@ prompt: |
 
 - 基础链路场景：例如 `docker_single.json`、`docker_multi.json`，继续使用 `/context list` 作为最小基准
 - 大样本 summary-only 场景：例如 `docker_single_100_summary.json`、`docker_multi_100_summary.json`，用于快速对比 100 次请求下的单 worker / 多 worker 汇总结果
-- 任务驱动场景：例如 `docker_single_task_context.json`、`docker_single_task_comprehension.json`、`docker_multi_task_mix.json`，从 `tasks/*.md` 加载 prompt 来模拟更真实的使用
+- 资源画像场景：例如 `docker_single_resource_profile.json`、`docker_multi_resource_profile.json`，用于一起观察 latency、容器 CPU/内存、进程 CPU/内存/IO、以及磁盘 await/%util/队列长度
+- 任务驱动场景：例如 `docker_single_task_context.json`、`docker_single_task_comprehension.json`、`docker_multi_task_mix.json`、`docker_single_task_semianalysis_smoke.json`、`docker_multi_task_semianalysis_smoke.json`、`docker_single_task_semianalysis_100_summary.json`、`docker_multi_task_semianalysis_100_summary.json`，从 `tasks/*.md` 加载 prompt 来模拟更真实的使用
 
 当 `client.task_file` 存在时，harness 会优先使用任务文件中的 `prompt`；
 `client.message` 仍会保留在场景里，但只作为回退值。
@@ -142,4 +155,4 @@ prompt: |
 - 只有在你想覆盖自动发现结果时，才需要手动填写 `runtime.host_pid`。
 - 如果没有安装 `pidstat` 或 `perf`，harness 会把对应 collector 标记为 `skipped`，但整次运行仍会继续完成。
 - 在 WSL 上，即使存在 `/usr/bin/perf`，如果缺少与当前内核匹配的 perf 二进制，它仍然可能不可用；这一点会在 `environment.json` 中明确标记。
-- 解析后的 collector 产物会和原始文件一起写在同一目录下，例如 `pidstat_cpu.csv`、`pidstat.summary.json`、`perf_stat.summary.json`。
+- 解析后的 collector 产物会和原始文件一起写在同一目录下，例如 `docker_stats.summary.json`、`pidstat_cpu.csv`、`pidstat.summary.json`、`iostat.summary.json`、`perf_stat.summary.json`。

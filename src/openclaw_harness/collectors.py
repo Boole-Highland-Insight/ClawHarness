@@ -271,4 +271,13 @@ def build_collectors(
             disabled_detail="host PID is unavailable" if host_pid is None else None,
         ),
     )
+    iostat_output = output_dir / "iostat.log"
+    collectors.append(
+        BackgroundCommandCollector(
+            name="iostat",
+            enabled=config.iostat.enabled,
+            command=["iostat", "-d", "-x", "-y", "-k", str(config.iostat.interval_sec)],
+            output_path=iostat_output,
+        ),
+    )
     return collectors

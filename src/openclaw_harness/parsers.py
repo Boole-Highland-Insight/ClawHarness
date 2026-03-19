@@ -3,11 +3,12 @@ from __future__ import annotations
 import csv
 from dataclasses import dataclass
 from pathlib import Path
+import re
 from statistics import fmean
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
-from .utils import write_json
+from .utils import summarize_ms, write_json
 
 
 @dataclass(frozen=True)
@@ -51,6 +52,14 @@ def parse_collector_artifacts(*, output_dir: Path, collectors: list[Any]) -> dic
     analyses: dict[str, Any] = {}
     by_name = {collector.status.name: collector for collector in collectors}
 
+    docker_stats = by_name.get("docker_stats")
+    docker_stats_csv = output_dir / "docker_stats.csv"
+    if docker_stats is not None and docker_stats_csv.exists():
+        parsed = parse_docker_stats_csv(docker_stats_csv, output_dir=output_dir)
+        if parsed is not None:
+            docker_stats.status.files.extend(path for path in parsed.files if path not in docker_stats.status.files)
+            analyses[parsed.name] = parsed.summary
+
     pidstat = by_name.get("pidstat")
     pidstat_log = output_dir / "pidstat.log"
     if pidstat is not None and pidstat_log.exists():
@@ -76,16 +85,107 @@ def parse_collector_artifacts(*, output_dir: Path, collectors: list[Any]) -> dic
             perf_record.status.files.extend(path for path in parsed.files if path not in perf_record.status.files)
             analyses[parsed.name] = parsed.summary
 
+    iostat = by_name.get("iostat")
+    iostat_log = output_dir / "iostat.log"
+    if iostat is not None and iostat_log.exists():
+        parsed = parse_iostat_log(iostat_log, output_dir=output_dir)
+        if parsed is not None:
+            iostat.status.files.extend(path for path in parsed.files if path not in iostat.status.files)
+            analyses[parsed.name] = parsed.summary
+
     return analyses
+
+
+def parse_docker_stats_csv(path: Path, *, output_dir: Path) -> ParsedArtifact | None:
+    rows: list[dict[str, Any]] = []
+    with path.open("r", encoding="utf-8", errors="replace", newline="") as handle:
+        reader = csv.DictReader(handle)
+        for raw_row in reader:
+            if not raw_row:
+                continue
+            cpu_pct = _parse_percent_maybe(raw_row.get("cpu_percent", ""))
+            mem_pct = _parse_percent_maybe(raw_row.get("mem_percent", ""))
+            pids = _parse_number_maybe(str(raw_row.get("pids", "")).strip())
+            mem_usage, mem_limit = _parse_usage_pair(raw_row.get("mem_usage_limit", ""))
+            net_rx, net_tx = _parse_usage_pair(raw_row.get("net_io", ""))
+            block_read, block_write = _parse_usage_pair(raw_row.get("block_io", ""))
+            rows.append(
+                {
+                    "timestamp": str(raw_row.get("timestamp", "")).strip(),
+                    "container": str(raw_row.get("container", "")).strip(),
+                    "cpu_percent_value": cpu_pct,
+                    "mem_percent_value": mem_pct,
+                    "pids_value": pids,
+                    "mem_usage_bytes": mem_usage,
+                    "mem_limit_bytes": mem_limit,
+                    "net_rx_bytes": net_rx,
+                    "net_tx_bytes": net_tx,
+                    "block_read_bytes": block_read,
+                    "block_write_bytes": block_write,
+                }
+            )
+
+    if not rows:
+        return None
+
+    parsed_path = output_dir / "docker_stats.parsed.csv"
+    _write_csv(parsed_path, rows)
+
+    numeric_fields = (
+        "cpu_percent_value",
+        "mem_percent_value",
+        "pids_value",
+        "mem_usage_bytes",
+        "mem_limit_bytes",
+        "net_rx_bytes",
+        "net_tx_bytes",
+        "block_read_bytes",
+        "block_write_bytes",
+    )
+    summary = {
+        "raw_csv": str(path),
+        "rows": len(rows),
+        "container": next((str(row["container"]) for row in rows if row.get("container")), ""),
+        "metrics": {
+            field: summarize_ms(
+                [float(row[field]) for row in rows if isinstance(row.get(field), (int, float))]
+            )
+            for field in numeric_fields
+        },
+    }
+    summary_path = output_dir / "docker_stats.summary.json"
+    write_json(summary_path, summary)
+    return ParsedArtifact(name="docker_stats", files=[str(parsed_path), str(summary_path)], summary=summary)
 
 
 def parse_pidstat_log(path: Path, *, output_dir: Path) -> ParsedArtifact | None:
     current_section: _PidstatSection | None = None
     rows_by_section: dict[str, list[dict[str, Any]]] = {section.name: [] for section in PIDSTAT_SECTIONS}
+    combined_header: list[str] | None = None
 
     for raw_line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         stripped = raw_line.strip()
         if not stripped or stripped.startswith("Linux "):
+            continue
+        if stripped.startswith("# Time"):
+            combined_header = stripped.lstrip("# ").split()
+            current_section = None
+            continue
+        if combined_header is not None and not stripped.startswith("#"):
+            combined_row = _parse_pidstat_combined_row(stripped, combined_header=combined_header)
+            if combined_row is not None:
+                for section in PIDSTAT_SECTIONS:
+                    section_row = {
+                        "sample_time": combined_row["sample_time"],
+                        "sample_kind": combined_row["sample_kind"],
+                        "uid": combined_row.get("uid", ""),
+                        "pid": combined_row.get("pid", ""),
+                        "command": combined_row.get("command", ""),
+                    }
+                    for field in section.fields[2:-1]:
+                        if field in combined_row:
+                            section_row[field] = combined_row[field]
+                    rows_by_section[section.name].append(section_row)
             continue
         sample_kind = "average" if stripped.startswith("Average:") else "interval"
         sample_time, tokens = _extract_pidstat_tokens(stripped)
@@ -209,6 +309,72 @@ def summarize_perf_record(*, perf_data: Path, perf_log: Path, output_dir: Path) 
     return ParsedArtifact(name="perf_record", files=files, summary=summary)
 
 
+def parse_iostat_log(path: Path, *, output_dir: Path) -> ParsedArtifact | None:
+    rows: list[dict[str, Any]] = []
+    current_header: list[str] | None = None
+
+    for raw_line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("Linux "):
+            continue
+        if stripped.startswith("Device"):
+            current_header = stripped.split()
+            continue
+        if current_header is None or stripped.startswith("avg-cpu"):
+            continue
+        tokens = stripped.split()
+        if len(tokens) < len(current_header):
+            continue
+        row: dict[str, Any] = {}
+        for key, raw in zip(current_header, tokens, strict=True):
+            normalized_key = _normalize_metric_key(key)
+            row[normalized_key] = raw if normalized_key == "device" else _parse_number_maybe(raw)
+        rows.append(row)
+
+    if not rows:
+        return None
+
+    parsed_path = output_dir / "iostat.parsed.csv"
+    _write_csv(parsed_path, rows)
+
+    metric_names = [key for key in rows[0].keys() if key != "device"]
+    by_device: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        device = str(row.get("device", "")).strip()
+        if not device:
+            continue
+        by_device.setdefault(device, []).append(row)
+
+    devices_summary: dict[str, Any] = {}
+    busiest_device = ""
+    busiest_util_mean = -1.0
+    for device, device_rows in by_device.items():
+        metrics = {
+            metric: summarize_ms(
+                [float(row[metric]) for row in device_rows if isinstance(row.get(metric), (int, float))]
+            )
+            for metric in metric_names
+        }
+        devices_summary[device] = {
+            "rows": len(device_rows),
+            "metrics": metrics,
+        }
+        util_mean = float(metrics.get("pct_util", {}).get("mean", 0.0))
+        if util_mean > busiest_util_mean:
+            busiest_util_mean = util_mean
+            busiest_device = device
+
+    summary = {
+        "raw_log": str(path),
+        "rows": len(rows),
+        "devices": devices_summary,
+        "busiest_device_by_util_mean": busiest_device,
+    }
+    summary_path = output_dir / "iostat.summary.json"
+    write_json(summary_path, summary)
+    return ParsedArtifact(name="iostat", files=[str(parsed_path), str(summary_path)], summary=summary)
+
+
 def derive_healthcheck_url(ws_url: str) -> str:
     parts = urlsplit(ws_url)
     if parts.scheme not in {"ws", "wss"}:
@@ -264,6 +430,48 @@ def _parse_pidstat_row(
     return row
 
 
+def _parse_pidstat_combined_row(line: str, *, combined_header: list[str]) -> dict[str, Any] | None:
+    tokens = line.split()
+    if len(tokens) < len(combined_header):
+        return None
+    sample_time = tokens[0]
+    values = tokens[1 : len(combined_header) - 1]
+    command = " ".join(tokens[len(combined_header) - 1 :])
+    if not command:
+        return None
+    header_fields = combined_header[1:-1]
+    field_map = {
+        "%usr": "pct_usr",
+        "%system": "pct_system",
+        "%guest": "pct_guest",
+        "%wait": "pct_wait",
+        "%CPU": "pct_cpu",
+        "CPU": "cpu",
+        "minflt/s": "minflt_per_s",
+        "majflt/s": "majflt_per_s",
+        "VSZ": "vsz_kib",
+        "RSS": "rss_kib",
+        "%MEM": "pct_mem",
+        "kB_rd/s": "kb_rd_per_s",
+        "kB_wr/s": "kb_wr_per_s",
+        "kB_ccwr/s": "kb_ccwr_per_s",
+        "iodelay": "iodelay",
+        "UID": "uid",
+        "PID": "pid",
+    }
+    row: dict[str, Any] = {
+        "sample_time": sample_time,
+        "sample_kind": "interval",
+        "command": command,
+    }
+    for header, raw in zip(header_fields, values, strict=True):
+        normalized = field_map.get(header)
+        if normalized is None:
+            continue
+        row[normalized] = _parse_number_maybe(raw)
+    return row
+
+
 def _parse_perf_stat_row(cells: list[str]) -> dict[str, Any] | None:
     timestamp = ""
     fields = cells
@@ -305,6 +513,47 @@ def _parse_number_maybe(raw: str) -> int | float | str:
         return float(normalized)
     except ValueError:
         return value
+
+
+def _parse_percent_maybe(raw: str) -> int | float | str:
+    value = raw.strip().rstrip("%")
+    return _parse_number_maybe(value)
+
+
+def _parse_usage_pair(raw: str | None) -> tuple[float, float]:
+    value = str(raw or "").strip()
+    if not value or "/" not in value:
+        return 0.0, 0.0
+    left, right = [part.strip() for part in value.split("/", 1)]
+    return _parse_size_to_bytes(left), _parse_size_to_bytes(right)
+
+
+def _parse_size_to_bytes(raw: str) -> float:
+    value = raw.strip()
+    if not value:
+        return 0.0
+    match = re.match(r"^([0-9]+(?:\.[0-9]+)?)\s*([A-Za-z]+)?$", value)
+    if not match:
+        return 0.0
+    amount = float(match.group(1))
+    unit = (match.group(2) or "B").strip()
+    unit_multipliers = {
+        "B": 1.0,
+        "KB": 1000.0,
+        "MB": 1000.0**2,
+        "GB": 1000.0**3,
+        "TB": 1000.0**4,
+        "KIB": 1024.0,
+        "MIB": 1024.0**2,
+        "GIB": 1024.0**3,
+        "TIB": 1024.0**4,
+    }
+    return amount * unit_multipliers.get(unit.upper(), 1.0)
+
+
+def _normalize_metric_key(value: str) -> str:
+    lowered = value.strip().lower().replace("%", "pct_")
+    return re.sub(r"[^a-z0-9]+", "_", lowered).strip("_")
 
 
 def _summarize_numeric(values: list[float]) -> dict[str, float]:

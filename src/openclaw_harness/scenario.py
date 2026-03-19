@@ -39,6 +39,13 @@ class CollectorsConfig:
     pidstat: PidstatConfig = field(default_factory=PidstatConfig)
     perf_stat: PerfStatConfig = field(default_factory=PerfStatConfig)
     perf_record: PerfRecordConfig = field(default_factory=PerfRecordConfig)
+    iostat: "IostatConfig" = field(default_factory=lambda: IostatConfig())
+
+
+@dataclass(slots=True)
+class IostatConfig:
+    enabled: bool = False
+    interval_sec: int = 1
 
 
 @dataclass(slots=True)
@@ -134,6 +141,7 @@ def load_scenario(path: Path) -> ScenarioConfig:
     _merge_dataclass(collector_raw.get("pidstat"), scenario.collectors.pidstat)
     _merge_dataclass(collector_raw.get("perf_stat"), scenario.collectors.perf_stat)
     _merge_dataclass(collector_raw.get("perf_record"), scenario.collectors.perf_record)
+    _merge_dataclass(collector_raw.get("iostat"), scenario.collectors.iostat)
     if scenario.client.session_mode not in SESSION_MODES:
         raise ValueError(
             f"invalid session_mode={scenario.client.session_mode!r}; expected one of {SESSION_MODES}",

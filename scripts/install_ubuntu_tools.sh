@@ -5,7 +5,7 @@ echo "Detected host:"
 uname -a
 echo
 
-echo "Installing pidstat via sysstat..."
+echo "Installing pidstat/iostat via sysstat..."
 sudo apt update
 sudo apt install -y sysstat
 
@@ -24,8 +24,10 @@ fi
 echo
 echo "Verification:"
 command -v pidstat || true
+command -v iostat || true
 command -v perf || true
 pidstat -V || true
+iostat -V || true
 PERF_OUTPUT="$(perf --version 2>&1 || true)"
 printf '%s\n' "${PERF_OUTPUT}"
 
@@ -36,7 +38,7 @@ perf wrapper is present, but there is no kernel-matched perf binary for the curr
 This is common on microsoft-standard-WSL2 kernels.
 
 Recommendation:
-- keep using pidstat locally
+- keep using pidstat + iostat locally
 - keep docker stats locally for container telemetry
 - collect perf stat / perf record on the Linux VPS
 EOF

@@ -22,6 +22,7 @@ def probe_environment(*, scenario: ScenarioConfig, output_dir: Path) -> dict[str
     tools = {
         "docker": _probe_tool("docker", None),
         "pidstat": _probe_tool("pidstat", ["pidstat", "-V"]),
+        "iostat": _probe_tool("iostat", ["iostat", "-V"]),
         "perf": _probe_tool("perf", ["perf", "--version"]),
     }
     install_hints = _build_install_hints(
@@ -56,6 +57,7 @@ def probe_environment(*, scenario: ScenarioConfig, output_dir: Path) -> dict[str
             "configured_collectors": {
                 "docker_stats": scenario.collectors.docker_stats.enabled,
                 "pidstat": scenario.collectors.pidstat.enabled,
+                "iostat": scenario.collectors.iostat.enabled,
                 "perf_stat": scenario.collectors.perf_stat.enabled,
                 "perf_record": scenario.collectors.perf_record.enabled,
             },
@@ -107,6 +109,11 @@ def _build_install_hints(
             "package": "sysstat",
             "command": "sudo apt update && sudo apt install -y sysstat",
         }
+        hints["iostat"] = {
+            "package": "sysstat",
+            "command": "sudo apt update && sudo apt install -y sysstat",
+            "note": "iostat ships with sysstat on Ubuntu.",
+        }
         perf_command = (
             "sudo apt update && sudo apt install -y linux-tools-common linux-tools-generic "
             "linux-cloud-tools-generic"
@@ -157,6 +164,10 @@ def _build_recommended_collectors(
             "enabled": True,
             "reason": pidstat_reason,
         },
+        "iostat": {
+            "enabled": True,
+            "reason": "recommended when you want disk await, queue depth, and %util evidence",
+        },
         "perf_stat": {
             "enabled": perf_enabled,
             "reason": perf_reason,
@@ -174,6 +185,8 @@ def _build_notes(*, is_wsl: bool, tools: dict[str, dict[str, Any]]) -> list[str]
         notes.append("WSL detected: use latency, docker stats, and pidstat locally; prefer VPS for perf-based CPU conclusions.")
     if not tools["pidstat"]["usable"]:
         notes.append(tools["pidstat"]["detail"] or "pidstat is not usable on this host.")
+    if not tools["iostat"]["usable"]:
+        notes.append(tools["iostat"]["detail"] or "iostat is not usable on this host.")
     if not tools["perf"]["usable"]:
         notes.append(tools["perf"]["detail"] or "perf is not usable on this host.")
     return notes
