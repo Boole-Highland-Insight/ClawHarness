@@ -19,6 +19,10 @@
 本地 Docker 场景遵循当前推荐的 WSL 策略：优先使用 `docker stats` + `pidstat`，
 `perf` 默认关闭，等迁移到 Linux VPS 后再作为正式采集手段启用。
 
+`docker_single_100_summary.json` 和 `docker_multi_100_summary.json` 现在也会开启
+`docker_stats`、`pidstat` 和 `iostat`，因此即使是最基础的 `/context list`
+大样本对比，也会在 `summary.json` 里保留容器 CPU/内存、进程 CPU/内存/IO 和磁盘指标汇总。
+
 ## 环境准备
 
 推荐方式：
@@ -59,6 +63,10 @@ python -m openclaw_harness run --scenario scenarios/docker_multi_task_semianalys
 python -m openclaw_harness run --scenario scenarios/docker_single_task_semianalysis_smoke.json
 python -m openclaw_harness run --scenario scenarios/docker_multi_task_semianalysis_smoke.json
 ```
+
+上面这些命令都是同一个入口：`python -m openclaw_harness run --scenario <file>`。
+harness 只直接接收 scenario JSON；是否使用 `tasks/*.md`，由 scenario 里的 `client`
+配置决定。
 
 使用 `.deps` 回退方案：
 
@@ -140,6 +148,61 @@ prompt: |
 
 当 `client.task_file` 存在时，harness 会优先使用任务文件中的 `prompt`；
 `client.message` 仍会保留在场景里，但只作为回退值。
+
+## Scenario 和 Task 的关系
+
+可以把 `scenarios/*.json` 理解成“运行计划”，把 `tasks/*.md` 理解成“提示词模板”。
+
+- 直接 message 场景：在 scenario 里设置 `client.message`
+- task 驱动场景：在 scenario 里设置 `client.task_file`
+
+最简单的 `/context list` 大样本场景长这样：
+
+```json
+{
+  "name": "docker-single-100-summary",
+  "client": {
+    "message": "/context list"
+  }
+}
+```
+
+对应运行命令：
+
+```bash
+python -m openclaw_harness run --scenario scenarios/docker_single_100_summary.json
+python -m openclaw_harness run --scenario scenarios/docker_multi_100_summary.json
+```
+
+task 驱动场景会在 scenario 里引用 `tasks/*.md`：
+
+```json
+{
+  "name": "docker-single-task-semianalysis-100-summary",
+  "client": {
+    "message": "/context list",
+    "task_file": "../tasks/task_05_semianalysis_title.md"
+  }
+}
+```
+
+对应运行命令：
+
+```bash
+python -m openclaw_harness run --scenario scenarios/docker_single_task_semianalysis_100_summary.json
+python -m openclaw_harness run --scenario scenarios/docker_multi_task_semianalysis_100_summary.json
+```
+
+代码路径上，它们的区别是：
+
+- CLI 入口在 `src/openclaw_harness/cli.py`
+- scenario 加载和 task 解析在 `src/openclaw_harness/scenario.py` 和 `src/openclaw_harness/task.py`
+- 如果 `client.task_file` 非空，`load_scenario()` 会读取 task frontmatter，并把 `prompt`
+  写入 `scenario.client.resolved_prompt`
+- 真正发给 gateway 的内容统一来自 `scenario.client.effective_message()`，也就是
+  “优先用 task prompt，否则退回到 `client.message`”
+- 实际压测执行链在 `src/openclaw_harness/runner.py`，每次请求都会走
+  `chat.send -> agent.wait -> chat.history`
 
 ## 说明
 

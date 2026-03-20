@@ -31,11 +31,15 @@
   },
   "collectors": {
     "docker_stats": {
-      "enabled": false,
+      "enabled": true,
       "interval_ms": 1000
     },
     "pidstat": {
-      "enabled": false,
+      "enabled": true,
+      "interval_sec": 1
+    },
+    "iostat": {
+      "enabled": true,
       "interval_sec": 1
     },
     "perf_stat": {
