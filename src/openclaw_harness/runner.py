@@ -14,11 +14,11 @@ from .collectors import build_collectors
 from .device_identity import load_or_create_device_identity
 from .environment import probe_environment, summarize_environment
 from .gateway_client import GatewayClient
-from .parsers import build_phase_resource_summary, parse_collector_artifacts
+from .parsers import parse_collector_artifacts
 from .reporting import build_summary, write_latency_csv, write_summary
 from .runtime import create_runtime_manager
 from .scenario import ScenarioConfig
-from .utils import ensure_directory, iso_now, now_utc, slugify, timestamp_slug, write_json
+from .utils import ensure_directory, iso_now, slugify, timestamp_slug, write_json
 
 
 def resolve_session_key(
@@ -56,12 +56,8 @@ async def execute_load(
             device_identity=device_identity,
         )
         connect_latency_ms = 0.0
-        connect_started_at = ""
-        connect_finished_at = ""
         try:
-            connect_started_at = now_utc().isoformat()
             connect_latency_ms = await client.connect()
-            connect_finished_at = now_utc().isoformat()
             for request_index in range(scenario.load.requests_per_worker):
                 session_key = resolve_session_key(
                     scenario=scenario,
@@ -77,18 +73,10 @@ async def execute_load(
                 send_latency_ms = 0.0
                 wait_latency_ms = 0.0
                 history_latency_ms = 0.0
-                send_started_at = ""
-                send_finished_at = ""
-                wait_started_at = ""
-                wait_finished_at = ""
-                history_started_at = ""
-                history_finished_at = ""
                 total_started = perf_counter_ns()
-                total_started_at = now_utc().isoformat()
                 success = False
                 try:
                     send_started = perf_counter_ns()
-                    send_started_at = now_utc().isoformat()
                     send_response = await client.send_chat(
                         session_key=session_key,
                         message=scenario.client.effective_message(),
@@ -96,31 +84,26 @@ async def execute_load(
                         timeout_ms=scenario.client.send_timeout_ms,
                     )
                     send_latency_ms = (perf_counter_ns() - send_started) / 1_000_000.0
-                    send_finished_at = now_utc().isoformat()
                     send_status = str((send_response.payload or {}).get("status", ""))
                     if not send_response.ok:
                         raise RuntimeError(f"chat.send failed: {send_response.error}")
 
                     wait_started = perf_counter_ns()
-                    wait_started_at = now_utc().isoformat()
                     wait_response = await client.wait_for_agent(
                         run_id=run_id,
                         timeout_ms=scenario.client.wait_timeout_ms,
                     )
                     wait_latency_ms = (perf_counter_ns() - wait_started) / 1_000_000.0
-                    wait_finished_at = now_utc().isoformat()
                     wait_status = str((wait_response.payload or {}).get("status", ""))
                     if not wait_response.ok:
                         raise RuntimeError(f"agent.wait failed: {wait_response.error}")
 
                     history_started = perf_counter_ns()
-                    history_started_at = now_utc().isoformat()
                     history_response = await client.load_history(
                         session_key=session_key,
                         limit=scenario.client.history_limit,
                     )
                     history_latency_ms = (perf_counter_ns() - history_started) / 1_000_000.0
-                    history_finished_at = now_utc().isoformat()
                     history_messages = len((history_response.payload or {}).get("messages", []) or [])
                     if not history_response.ok:
                         raise RuntimeError(f"chat.history failed: {history_response.error}")
@@ -147,15 +130,7 @@ async def execute_load(
                         "send_status": send_status,
                         "wait_status": wait_status,
                         "history_messages": history_messages,
-                        "connect_started_at": connect_started_at,
-                        "connect_finished_at": connect_finished_at,
-                        "send_started_at": send_started_at,
-                        "send_finished_at": send_finished_at,
-                        "wait_started_at": wait_started_at,
-                        "wait_finished_at": wait_finished_at,
-                        "history_started_at": history_started_at,
-                        "history_finished_at": history_finished_at,
-                        "started_at": total_started_at,
+                        "started_at": started_at,
                         "finished_at": finished_at,
                         "error": error_text,
                     },
@@ -330,7 +305,6 @@ async def run_scenario(
         collector_analysis = parse_collector_artifacts(
             output_dir=run_dir,
             collectors=collectors,
-            run_started_at=started_at,
         )
         runtime_manager.stop()
         meta = {
@@ -377,16 +351,6 @@ async def run_scenario(
     summary["started_at"] = started_at
     summary["finished_at"] = iso_now()
     write_summary(run_dir / "summary.json", summary)
-    phase_resource_summary = build_phase_resource_summary(
-        output_dir=run_dir,
-        rows=rows,
-        concurrency=scenario.load.concurrency,
-    )
-    if phase_resource_summary is not None:
-        write_json(run_dir / "phase_resource_summary.json", phase_resource_summary)
     if scenario.artifacts.summary_only:
-        keep_files = {"summary.json"}
-        if phase_resource_summary is not None:
-            keep_files.add("phase_resource_summary.json")
-        prune_run_artifacts(run_dir=run_dir, keep_files=keep_files)
+        prune_run_artifacts(run_dir=run_dir, keep_files={"summary.json"})
     return run_dir

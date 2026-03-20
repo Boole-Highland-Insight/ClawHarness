@@ -1,4 +1,0 @@
-sample_timestamp,sample_time,sample_kind,uid,pid,command,kb_rd_per_s,kb_wr_per_s,kb_ccwr_per_s,iodelay
-2026-03-20T11:26:43+00:00,11:26:43,interval,1000,23047,docker-init,0.0,0.0,0.0,0
-2026-03-20T11:26:44+00:00,11:26:44,interval,1000,23047,docker-init,0.0,0.0,0.0,0
-2026-03-20T11:26:45+00:00,11:26:45,interval,1000,23047,docker-init,0.0,0.0,0.0,0

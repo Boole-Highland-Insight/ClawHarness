@@ -1,8 +1,0 @@
-{
-  "gateway": {
-    "mode": "local",
-    "controlUi": {
-      "enabled": false
-    }
-  }
-}

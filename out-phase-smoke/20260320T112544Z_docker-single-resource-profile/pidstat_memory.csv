@@ -1,4 +1,0 @@
-sample_timestamp,sample_time,sample_kind,uid,pid,command,minflt_per_s,majflt_per_s,vsz_kib,rss_kib,pct_mem
-2026-03-20T11:26:03+00:00,11:26:03,interval,1000,22316,docker-init,0.0,0.0,1056,640,0.01
-2026-03-20T11:26:04+00:00,11:26:04,interval,1000,22316,docker-init,0.0,0.0,1056,640,0.01
-2026-03-20T11:26:05+00:00,11:26:05,interval,1000,22316,docker-init,0.0,0.0,1056,640,0.01

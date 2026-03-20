@@ -232,7 +232,6 @@ def build_collectors(
             disabled_detail="host PID is unavailable" if host_pid is None else None,
         ),
     )
-
     perf_stat_output = output_dir / "perf_stat.csv"
     collectors.append(
         BackgroundCommandCollector(
@@ -289,7 +288,7 @@ def build_collectors(
         BackgroundCommandCollector(
             name="iostat",
             enabled=config.iostat.enabled,
-            command=["iostat", "-d", "-x", "-y", "-t", "-k", str(config.iostat.interval_sec)],
+            command=["iostat", "-d", "-x", "-y", "-k", str(config.iostat.interval_sec)],
             output_path=iostat_output,
         ),
     )
