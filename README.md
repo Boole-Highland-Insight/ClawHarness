@@ -23,6 +23,30 @@
 `docker_stats`、`pidstat` 和 `iostat`，因此即使是最基础的 `/context list`
 大样本对比，也会在 `summary.json` 里保留容器 CPU/内存、进程 CPU/内存/IO 和磁盘指标汇总。
 
+## Latency Phases
+
+`summary.json` 和 `latency.csv` 里的 phase 由 harness 客户端在
+`src/openclaw_harness/runner.py` 中划分，不是 OpenClaw gateway 原生输出的 phase。
+
+- `connect`
+  - `GatewayClient.connect()` 的耗时。
+  - 表示 benchmark 客户端与 gateway 建立 WebSocket 连接并完成 `connect` 握手的时间。
+  - 这是按 worker 记录的建连成本，不是每条请求都重新计算一次。
+- `send`
+  - `chat.send` 的耗时。
+  - 表示客户端把命令或任务提交给 gateway 的时间。
+- `wait`
+  - `agent.wait` 的耗时。
+  - 表示请求已经提交后，等待 agent 执行并返回完成状态的时间。
+  - 这个阶段通常最接近“真实任务处理时间”，也是最容易成为主要瓶颈的阶段。
+- `history`
+  - `chat.history` 的耗时。
+  - 表示在任务完成后，再向 gateway 读取该 `sessionKey` 对应消息历史的时间。
+  - 这里是从 OpenClaw gateway 的 session history 中读回到 benchmark Python 客户端，不是再次请求模型。
+- `total`
+  - 从 `send` 开始到 `history` 结束的总耗时。
+  - 当前口径下 `total` 不包含 `connect`。
+
 ## 环境准备
 
 推荐方式：
