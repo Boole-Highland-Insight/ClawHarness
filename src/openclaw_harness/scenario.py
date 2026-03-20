@@ -26,6 +26,7 @@ class PidstatConfig:
 @dataclass(slots=True)
 class PerfStatConfig:
     enabled: bool = True
+    interval_ms: int = 1000
 
 
 @dataclass(slots=True)

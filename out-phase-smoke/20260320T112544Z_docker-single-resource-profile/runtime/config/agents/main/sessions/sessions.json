@@ -1,0 +1,21 @@
+{
+  "agent:main:bench-resource-single-w0": {
+    "sessionId": "03304cf9-69cf-4418-b430-01bed4f0c263",
+    "updatedAt": 1774005965978,
+    "systemSent": false,
+    "abortedLastRun": false,
+    "chatType": "direct",
+    "deliveryContext": {
+      "channel": "webchat"
+    },
+    "lastChannel": "webchat",
+    "origin": {
+      "label": "openclaw benchmark harness",
+      "provider": "webchat",
+      "surface": "webchat",
+      "chatType": "direct"
+    },
+    "sessionFile": "/home/node/.openclaw/agents/main/sessions/03304cf9-69cf-4418-b430-01bed4f0c263.jsonl",
+    "compactionCount": 0
+  }
+}

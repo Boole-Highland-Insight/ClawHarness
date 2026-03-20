@@ -1,0 +1,78 @@
+{
+  "agent:main:bench-resource-multi-w0": {
+    "sessionId": "3ffef49f-2c4b-4b4c-a5b8-53dc925b6efc",
+    "updatedAt": 1774006005624,
+    "systemSent": false,
+    "abortedLastRun": false,
+    "chatType": "direct",
+    "deliveryContext": {
+      "channel": "webchat"
+    },
+    "lastChannel": "webchat",
+    "origin": {
+      "label": "openclaw benchmark harness",
+      "provider": "webchat",
+      "surface": "webchat",
+      "chatType": "direct"
+    },
+    "sessionFile": "/home/node/.openclaw/agents/main/sessions/3ffef49f-2c4b-4b4c-a5b8-53dc925b6efc.jsonl",
+    "compactionCount": 0
+  },
+  "agent:main:bench-resource-multi-w1": {
+    "sessionId": "24f10d35-dd9d-47d8-bc52-f0a5da614623",
+    "updatedAt": 1774006005924,
+    "systemSent": false,
+    "abortedLastRun": false,
+    "chatType": "direct",
+    "deliveryContext": {
+      "channel": "webchat"
+    },
+    "lastChannel": "webchat",
+    "origin": {
+      "label": "openclaw benchmark harness",
+      "provider": "webchat",
+      "surface": "webchat",
+      "chatType": "direct"
+    },
+    "sessionFile": "/home/node/.openclaw/agents/main/sessions/24f10d35-dd9d-47d8-bc52-f0a5da614623.jsonl",
+    "compactionCount": 0
+  },
+  "agent:main:bench-resource-multi-w2": {
+    "sessionId": "84812cea-fb07-4374-a87f-7dcaabd96707",
+    "updatedAt": 1774006005990,
+    "systemSent": false,
+    "abortedLastRun": false,
+    "chatType": "direct",
+    "deliveryContext": {
+      "channel": "webchat"
+    },
+    "lastChannel": "webchat",
+    "origin": {
+      "label": "openclaw benchmark harness",
+      "provider": "webchat",
+      "surface": "webchat",
+      "chatType": "direct"
+    },
+    "sessionFile": "/home/node/.openclaw/agents/main/sessions/84812cea-fb07-4374-a87f-7dcaabd96707.jsonl",
+    "compactionCount": 0
+  },
+  "agent:main:bench-resource-multi-w3": {
+    "sessionId": "a0c2af6c-2a4f-47f7-b392-f3767cd6e893",
+    "updatedAt": 1774006006145,
+    "systemSent": false,
+    "abortedLastRun": false,
+    "chatType": "direct",
+    "deliveryContext": {
+      "channel": "webchat"
+    },
+    "lastChannel": "webchat",
+    "origin": {
+      "label": "openclaw benchmark harness",
+      "provider": "webchat",
+      "surface": "webchat",
+      "chatType": "direct"
+    },
+    "sessionFile": "/home/node/.openclaw/agents/main/sessions/a0c2af6c-2a4f-47f7-b392-f3767cd6e893.jsonl",
+    "compactionCount": 0
+  }
+}

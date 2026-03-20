@@ -1,0 +1,133 @@
+{
+  "raw_log": "/home/z84436644/openclaw/benchmarks/client-harness/out-phase-smoke\r/20260320T112544Z_docker-single-resource-profile/pidstat.log",
+  "sections": {
+    "context_switch": {
+      "metrics": {
+        "cswch_per_s": {
+          "count": 3.0,
+          "max": 1.0,
+          "mean": 1.0,
+          "min": 1.0
+        },
+        "nvcswch_per_s": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0
+        }
+      },
+      "rows": 3,
+      "sample_kinds": [
+        "interval"
+      ]
+    },
+    "cpu": {
+      "metrics": {
+        "pct_cpu": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0
+        },
+        "pct_guest": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0
+        },
+        "pct_system": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0
+        },
+        "pct_usr": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0
+        },
+        "pct_wait": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0
+        }
+      },
+      "rows": 3,
+      "sample_kinds": [
+        "interval"
+      ]
+    },
+    "io": {
+      "metrics": {
+        "iodelay": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0
+        },
+        "kb_ccwr_per_s": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0
+        },
+        "kb_rd_per_s": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0
+        },
+        "kb_wr_per_s": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0
+        }
+      },
+      "rows": 3,
+      "sample_kinds": [
+        "interval"
+      ]
+    },
+    "memory": {
+      "metrics": {
+        "majflt_per_s": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0
+        },
+        "minflt_per_s": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0
+        },
+        "pct_mem": {
+          "count": 3.0,
+          "max": 0.01,
+          "mean": 0.01,
+          "min": 0.01
+        },
+        "rss_kib": {
+          "count": 3.0,
+          "max": 640.0,
+          "mean": 640.0,
+          "min": 640.0
+        },
+        "vsz_kib": {
+          "count": 3.0,
+          "max": 1056.0,
+          "mean": 1056.0,
+          "min": 1056.0
+        }
+      },
+      "rows": 3,
+      "sample_kinds": [
+        "interval"
+      ]
+    }
+  }
+}

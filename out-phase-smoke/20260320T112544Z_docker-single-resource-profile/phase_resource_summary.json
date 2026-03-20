@@ -1,0 +1,858 @@
+{
+  "alignment_mode": "exact_single_worker",
+  "concurrency": 1,
+  "exact_phase_attribution": true,
+  "notes": "system samples are attributed precisely to non-overlapping single-worker phase windows",
+  "phases": {
+    "connect": {
+      "metrics": {},
+      "window_count": 1
+    },
+    "history": {
+      "metrics": {},
+      "window_count": 100
+    },
+    "send": {
+      "metrics": {},
+      "window_count": 100
+    },
+    "total": {
+      "metrics": {
+        "docker_stats.block_read_bytes": {
+          "count": 1.0,
+          "max": 89300000.0,
+          "mean": 89300000.0,
+          "min": 89300000.0,
+          "p50": 89300000.0,
+          "p95": 89300000.0,
+          "p99": 89300000.0
+        },
+        "docker_stats.block_write_bytes": {
+          "count": 1.0,
+          "max": 10900000.0,
+          "mean": 10900000.0,
+          "min": 10900000.0,
+          "p50": 10900000.0,
+          "p95": 10900000.0,
+          "p99": 10900000.0
+        },
+        "docker_stats.cpu_percent_value": {
+          "count": 1.0,
+          "max": 107.21,
+          "mean": 107.21,
+          "min": 107.21,
+          "p50": 107.21,
+          "p95": 107.21,
+          "p99": 107.21
+        },
+        "docker_stats.mem_percent_value": {
+          "count": 1.0,
+          "max": 20.45,
+          "mean": 20.45,
+          "min": 20.45,
+          "p50": 20.45,
+          "p95": 20.45,
+          "p99": 20.45
+        },
+        "docker_stats.mem_usage_bytes": {
+          "count": 1.0,
+          "max": 1673963503.616,
+          "mean": 1673963503.616,
+          "min": 1673963503.616,
+          "p50": 1673963503.616,
+          "p95": 1673963503.616,
+          "p99": 1673963503.616
+        },
+        "docker_stats.net_rx_bytes": {
+          "count": 1.0,
+          "max": 32200.000000000004,
+          "mean": 32200.000000000004,
+          "min": 32200.000000000004,
+          "p50": 32200.000000000004,
+          "p95": 32200.000000000004,
+          "p99": 32200.000000000004
+        },
+        "docker_stats.net_tx_bytes": {
+          "count": 1.0,
+          "max": 390000.0,
+          "mean": 390000.0,
+          "min": 390000.0,
+          "p50": 390000.0,
+          "p95": 390000.0,
+          "p99": 390000.0
+        },
+        "docker_stats.pids_value": {
+          "count": 1.0,
+          "max": 12.0,
+          "mean": 12.0,
+          "min": 12.0,
+          "p50": 12.0,
+          "p95": 12.0,
+          "p99": 12.0
+        },
+        "iostat.aqu_sz": {
+          "count": 3.0,
+          "max": 0.13,
+          "mean": 0.06333333333333334,
+          "min": 0.03,
+          "p50": 0.03,
+          "p95": 0.13,
+          "p99": 0.13
+        },
+        "iostat.d_await": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "iostat.d_s": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "iostat.dareq_sz": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "iostat.dkb_s": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "iostat.drqm_s": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "iostat.f_await": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "iostat.f_s": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "iostat.pct_drqm": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "iostat.pct_rrqm": {
+          "count": 3.0,
+          "max": 8.97,
+          "mean": 2.99,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 8.97,
+          "p99": 8.97
+        },
+        "iostat.pct_util": {
+          "count": 3.0,
+          "max": 12.8,
+          "mean": 6.266666666666667,
+          "min": 2.8,
+          "p50": 3.2,
+          "p95": 12.8,
+          "p99": 12.8
+        },
+        "iostat.pct_wrqm": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "iostat.r_await": {
+          "count": 3.0,
+          "max": 0.2,
+          "mean": 0.06666666666666667,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.2,
+          "p99": 0.2
+        },
+        "iostat.r_s": {
+          "count": 3.0,
+          "max": 568.0,
+          "mean": 189.33333333333334,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 568.0,
+          "p99": 568.0
+        },
+        "iostat.rareq_sz": {
+          "count": 3.0,
+          "max": 63.49,
+          "mean": 21.163333333333334,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 63.49,
+          "p99": 63.49
+        },
+        "iostat.rkb_s": {
+          "count": 3.0,
+          "max": 36060.0,
+          "mean": 12020.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 36060.0,
+          "p99": 36060.0
+        },
+        "iostat.rrqm_s": {
+          "count": 3.0,
+          "max": 56.0,
+          "mean": 18.666666666666668,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 56.0,
+          "p99": 56.0
+        },
+        "iostat.w_await": {
+          "count": 3.0,
+          "max": 0.93,
+          "mean": 0.8033333333333333,
+          "min": 0.65,
+          "p50": 0.83,
+          "p95": 0.93,
+          "p99": 0.93
+        },
+        "iostat.w_s": {
+          "count": 3.0,
+          "max": 30.0,
+          "mean": 27.333333333333332,
+          "min": 23.0,
+          "p50": 29.0,
+          "p95": 30.0,
+          "p99": 30.0
+        },
+        "iostat.wareq_sz": {
+          "count": 3.0,
+          "max": 4.0,
+          "mean": 4.0,
+          "min": 4.0,
+          "p50": 4.0,
+          "p95": 4.0,
+          "p99": 4.0
+        },
+        "iostat.wkb_s": {
+          "count": 3.0,
+          "max": 120.0,
+          "mean": 109.33333333333333,
+          "min": 92.0,
+          "p50": 116.0,
+          "p95": 120.0,
+          "p99": 120.0
+        },
+        "iostat.wrqm_s": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "pidstat.context_switch.cswch_per_s": {
+          "count": 3.0,
+          "max": 1.0,
+          "mean": 1.0,
+          "min": 1.0,
+          "p50": 1.0,
+          "p95": 1.0,
+          "p99": 1.0
+        },
+        "pidstat.context_switch.nvcswch_per_s": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "pidstat.cpu.pct_cpu": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "pidstat.cpu.pct_guest": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "pidstat.cpu.pct_system": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "pidstat.cpu.pct_usr": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "pidstat.cpu.pct_wait": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "pidstat.io.iodelay": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "pidstat.io.kb_ccwr_per_s": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "pidstat.io.kb_rd_per_s": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "pidstat.io.kb_wr_per_s": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "pidstat.memory.majflt_per_s": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "pidstat.memory.minflt_per_s": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "pidstat.memory.pct_mem": {
+          "count": 3.0,
+          "max": 0.01,
+          "mean": 0.01,
+          "min": 0.01,
+          "p50": 0.01,
+          "p95": 0.01,
+          "p99": 0.01
+        },
+        "pidstat.memory.rss_kib": {
+          "count": 3.0,
+          "max": 640.0,
+          "mean": 640.0,
+          "min": 640.0,
+          "p50": 640.0,
+          "p95": 640.0,
+          "p99": 640.0
+        },
+        "pidstat.memory.vsz_kib": {
+          "count": 3.0,
+          "max": 1056.0,
+          "mean": 1056.0,
+          "min": 1056.0,
+          "p50": 1056.0,
+          "p95": 1056.0,
+          "p99": 1056.0
+        }
+      },
+      "window_count": 100
+    },
+    "wait": {
+      "metrics": {
+        "docker_stats.block_read_bytes": {
+          "count": 1.0,
+          "max": 89300000.0,
+          "mean": 89300000.0,
+          "min": 89300000.0,
+          "p50": 89300000.0,
+          "p95": 89300000.0,
+          "p99": 89300000.0
+        },
+        "docker_stats.block_write_bytes": {
+          "count": 1.0,
+          "max": 10900000.0,
+          "mean": 10900000.0,
+          "min": 10900000.0,
+          "p50": 10900000.0,
+          "p95": 10900000.0,
+          "p99": 10900000.0
+        },
+        "docker_stats.cpu_percent_value": {
+          "count": 1.0,
+          "max": 107.21,
+          "mean": 107.21,
+          "min": 107.21,
+          "p50": 107.21,
+          "p95": 107.21,
+          "p99": 107.21
+        },
+        "docker_stats.mem_percent_value": {
+          "count": 1.0,
+          "max": 20.45,
+          "mean": 20.45,
+          "min": 20.45,
+          "p50": 20.45,
+          "p95": 20.45,
+          "p99": 20.45
+        },
+        "docker_stats.mem_usage_bytes": {
+          "count": 1.0,
+          "max": 1673963503.616,
+          "mean": 1673963503.616,
+          "min": 1673963503.616,
+          "p50": 1673963503.616,
+          "p95": 1673963503.616,
+          "p99": 1673963503.616
+        },
+        "docker_stats.net_rx_bytes": {
+          "count": 1.0,
+          "max": 32200.000000000004,
+          "mean": 32200.000000000004,
+          "min": 32200.000000000004,
+          "p50": 32200.000000000004,
+          "p95": 32200.000000000004,
+          "p99": 32200.000000000004
+        },
+        "docker_stats.net_tx_bytes": {
+          "count": 1.0,
+          "max": 390000.0,
+          "mean": 390000.0,
+          "min": 390000.0,
+          "p50": 390000.0,
+          "p95": 390000.0,
+          "p99": 390000.0
+        },
+        "docker_stats.pids_value": {
+          "count": 1.0,
+          "max": 12.0,
+          "mean": 12.0,
+          "min": 12.0,
+          "p50": 12.0,
+          "p95": 12.0,
+          "p99": 12.0
+        },
+        "iostat.aqu_sz": {
+          "count": 3.0,
+          "max": 0.13,
+          "mean": 0.06333333333333334,
+          "min": 0.03,
+          "p50": 0.03,
+          "p95": 0.13,
+          "p99": 0.13
+        },
+        "iostat.d_await": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "iostat.d_s": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "iostat.dareq_sz": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "iostat.dkb_s": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "iostat.drqm_s": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "iostat.f_await": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "iostat.f_s": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "iostat.pct_drqm": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "iostat.pct_rrqm": {
+          "count": 3.0,
+          "max": 8.97,
+          "mean": 2.99,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 8.97,
+          "p99": 8.97
+        },
+        "iostat.pct_util": {
+          "count": 3.0,
+          "max": 12.8,
+          "mean": 6.266666666666667,
+          "min": 2.8,
+          "p50": 3.2,
+          "p95": 12.8,
+          "p99": 12.8
+        },
+        "iostat.pct_wrqm": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "iostat.r_await": {
+          "count": 3.0,
+          "max": 0.2,
+          "mean": 0.06666666666666667,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.2,
+          "p99": 0.2
+        },
+        "iostat.r_s": {
+          "count": 3.0,
+          "max": 568.0,
+          "mean": 189.33333333333334,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 568.0,
+          "p99": 568.0
+        },
+        "iostat.rareq_sz": {
+          "count": 3.0,
+          "max": 63.49,
+          "mean": 21.163333333333334,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 63.49,
+          "p99": 63.49
+        },
+        "iostat.rkb_s": {
+          "count": 3.0,
+          "max": 36060.0,
+          "mean": 12020.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 36060.0,
+          "p99": 36060.0
+        },
+        "iostat.rrqm_s": {
+          "count": 3.0,
+          "max": 56.0,
+          "mean": 18.666666666666668,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 56.0,
+          "p99": 56.0
+        },
+        "iostat.w_await": {
+          "count": 3.0,
+          "max": 0.93,
+          "mean": 0.8033333333333333,
+          "min": 0.65,
+          "p50": 0.83,
+          "p95": 0.93,
+          "p99": 0.93
+        },
+        "iostat.w_s": {
+          "count": 3.0,
+          "max": 30.0,
+          "mean": 27.333333333333332,
+          "min": 23.0,
+          "p50": 29.0,
+          "p95": 30.0,
+          "p99": 30.0
+        },
+        "iostat.wareq_sz": {
+          "count": 3.0,
+          "max": 4.0,
+          "mean": 4.0,
+          "min": 4.0,
+          "p50": 4.0,
+          "p95": 4.0,
+          "p99": 4.0
+        },
+        "iostat.wkb_s": {
+          "count": 3.0,
+          "max": 120.0,
+          "mean": 109.33333333333333,
+          "min": 92.0,
+          "p50": 116.0,
+          "p95": 120.0,
+          "p99": 120.0
+        },
+        "iostat.wrqm_s": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "pidstat.context_switch.cswch_per_s": {
+          "count": 3.0,
+          "max": 1.0,
+          "mean": 1.0,
+          "min": 1.0,
+          "p50": 1.0,
+          "p95": 1.0,
+          "p99": 1.0
+        },
+        "pidstat.context_switch.nvcswch_per_s": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "pidstat.cpu.pct_cpu": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "pidstat.cpu.pct_guest": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "pidstat.cpu.pct_system": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "pidstat.cpu.pct_usr": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "pidstat.cpu.pct_wait": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "pidstat.io.iodelay": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "pidstat.io.kb_ccwr_per_s": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "pidstat.io.kb_rd_per_s": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "pidstat.io.kb_wr_per_s": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "pidstat.memory.majflt_per_s": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "pidstat.memory.minflt_per_s": {
+          "count": 3.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "pidstat.memory.pct_mem": {
+          "count": 3.0,
+          "max": 0.01,
+          "mean": 0.01,
+          "min": 0.01,
+          "p50": 0.01,
+          "p95": 0.01,
+          "p99": 0.01
+        },
+        "pidstat.memory.rss_kib": {
+          "count": 3.0,
+          "max": 640.0,
+          "mean": 640.0,
+          "min": 640.0,
+          "p50": 640.0,
+          "p95": 640.0,
+          "p99": 640.0
+        },
+        "pidstat.memory.vsz_kib": {
+          "count": 3.0,
+          "max": 1056.0,
+          "mean": 1056.0,
+          "min": 1056.0,
+          "p50": 1056.0,
+          "p95": 1056.0,
+          "p99": 1056.0
+        }
+      },
+      "window_count": 100
+    }
+  }
+}

@@ -1,0 +1,4 @@
+sample_timestamp,sample_time,sample_kind,uid,pid,command,cswch_per_s,nvcswch_per_s
+2026-03-20T11:26:43+00:00,11:26:43,interval,1000,23047,docker-init,1.0,0.0
+2026-03-20T11:26:44+00:00,11:26:44,interval,1000,23047,docker-init,1.0,0.0
+2026-03-20T11:26:45+00:00,11:26:45,interval,1000,23047,docker-init,1.0,0.0

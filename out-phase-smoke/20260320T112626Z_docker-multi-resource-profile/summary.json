@@ -1,0 +1,1155 @@
+{
+  "collector_analysis": {
+    "docker_stats": {
+      "container": "openclaw-bench-docker-multi-resource-profile-176c435e",
+      "metrics": {
+        "block_read_bytes": {
+          "count": 2.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "block_write_bytes": {
+          "count": 2.0,
+          "max": 754000.0,
+          "mean": 592000.0,
+          "min": 430000.0,
+          "p50": 430000.0,
+          "p95": 754000.0,
+          "p99": 754000.0
+        },
+        "cpu_percent_value": {
+          "count": 2.0,
+          "max": 121.89,
+          "mean": 114.255,
+          "min": 106.62,
+          "p50": 106.62,
+          "p95": 121.89,
+          "p99": 121.89
+        },
+        "mem_limit_bytes": {
+          "count": 2.0,
+          "max": 8182986440.704,
+          "mean": 8182986440.704,
+          "min": 8182986440.704,
+          "p50": 8182986440.704,
+          "p95": 8182986440.704,
+          "p99": 8182986440.704
+        },
+        "mem_percent_value": {
+          "count": 2.0,
+          "max": 23.02,
+          "mean": 23.005,
+          "min": 22.99,
+          "p50": 22.99,
+          "p95": 23.02,
+          "p99": 23.02
+        },
+        "mem_usage_bytes": {
+          "count": 2.0,
+          "max": 1883343159.296,
+          "mean": 1882269417.4720001,
+          "min": 1881195675.648,
+          "p50": 1881195675.648,
+          "p95": 1883343159.296,
+          "p99": 1883343159.296
+        },
+        "net_rx_bytes": {
+          "count": 2.0,
+          "max": 130000.0,
+          "mean": 86800.0,
+          "min": 43600.0,
+          "p50": 43600.0,
+          "p95": 130000.0,
+          "p99": 130000.0
+        },
+        "net_tx_bytes": {
+          "count": 2.0,
+          "max": 3250000.0,
+          "mean": 1794500.0,
+          "min": 339000.0,
+          "p50": 339000.0,
+          "p95": 3250000.0,
+          "p99": 3250000.0
+        },
+        "pids_value": {
+          "count": 2.0,
+          "max": 12.0,
+          "mean": 12.0,
+          "min": 12.0,
+          "p50": 12.0,
+          "p95": 12.0,
+          "p99": 12.0
+        }
+      },
+      "raw_csv": "/home/z84436644/openclaw/benchmarks/client-harness/out-phase-smoke\r/20260320T112626Z_docker-multi-resource-profile/docker_stats.csv",
+      "rows": 2
+    },
+    "iostat": {
+      "busiest_device_by_util_mean": "sdd",
+      "devices": {
+        "sda": {
+          "metrics": {
+            "aqu_sz": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "d_await": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "d_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "dareq_sz": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "dkb_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "drqm_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "f_await": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "f_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "pct_drqm": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "pct_rrqm": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "pct_util": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "pct_wrqm": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "r_await": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "r_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "rareq_sz": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "rkb_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "rrqm_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "w_await": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "w_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "wareq_sz": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "wkb_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "wrqm_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            }
+          },
+          "rows": 3
+        },
+        "sdb": {
+          "metrics": {
+            "aqu_sz": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "d_await": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "d_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "dareq_sz": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "dkb_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "drqm_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "f_await": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "f_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "pct_drqm": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "pct_rrqm": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "pct_util": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "pct_wrqm": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "r_await": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "r_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "rareq_sz": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "rkb_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "rrqm_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "w_await": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "w_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "wareq_sz": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "wkb_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "wrqm_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            }
+          },
+          "rows": 3
+        },
+        "sdc": {
+          "metrics": {
+            "aqu_sz": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "d_await": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "d_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "dareq_sz": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "dkb_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "drqm_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "f_await": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "f_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "pct_drqm": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "pct_rrqm": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "pct_util": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "pct_wrqm": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "r_await": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "r_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "rareq_sz": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "rkb_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "rrqm_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "w_await": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "w_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "wareq_sz": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "wkb_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "wrqm_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            }
+          },
+          "rows": 3
+        },
+        "sdd": {
+          "metrics": {
+            "aqu_sz": {
+              "count": 3.0,
+              "max": 0.03,
+              "mean": 0.02666666666666667,
+              "min": 0.02,
+              "p50": 0.03,
+              "p95": 0.03,
+              "p99": 0.03
+            },
+            "d_await": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "d_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "dareq_sz": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "dkb_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "drqm_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "f_await": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "f_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "pct_drqm": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "pct_rrqm": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "pct_util": {
+              "count": 3.0,
+              "max": 3.2,
+              "mean": 2.266666666666667,
+              "min": 1.6,
+              "p50": 2.0,
+              "p95": 3.2,
+              "p99": 3.2
+            },
+            "pct_wrqm": {
+              "count": 3.0,
+              "max": 8.57,
+              "mean": 2.856666666666667,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 8.57,
+              "p99": 8.57
+            },
+            "r_await": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "r_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "rareq_sz": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "rkb_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "rrqm_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0
+            },
+            "w_await": {
+              "count": 3.0,
+              "max": 0.94,
+              "mean": 0.85,
+              "min": 0.74,
+              "p50": 0.87,
+              "p95": 0.94,
+              "p99": 0.94
+            },
+            "w_s": {
+              "count": 3.0,
+              "max": 34.0,
+              "mean": 32.0,
+              "min": 30.0,
+              "p50": 32.0,
+              "p95": 34.0,
+              "p99": 34.0
+            },
+            "wareq_sz": {
+              "count": 3.0,
+              "max": 4.38,
+              "mean": 4.126666666666666,
+              "min": 4.0,
+              "p50": 4.0,
+              "p95": 4.38,
+              "p99": 4.38
+            },
+            "wkb_s": {
+              "count": 3.0,
+              "max": 140.0,
+              "mean": 132.0,
+              "min": 120.0,
+              "p50": 136.0,
+              "p95": 140.0,
+              "p99": 140.0
+            },
+            "wrqm_s": {
+              "count": 3.0,
+              "max": 3.0,
+              "mean": 1.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 3.0,
+              "p99": 3.0
+            }
+          },
+          "rows": 3
+        }
+      },
+      "raw_log": "/home/z84436644/openclaw/benchmarks/client-harness/out-phase-smoke\r/20260320T112626Z_docker-multi-resource-profile/iostat.log",
+      "rows": 12
+    },
+    "pidstat": {
+      "raw_log": "/home/z84436644/openclaw/benchmarks/client-harness/out-phase-smoke\r/20260320T112626Z_docker-multi-resource-profile/pidstat.log",
+      "sections": {
+        "context_switch": {
+          "metrics": {
+            "cswch_per_s": {
+              "count": 3.0,
+              "max": 1.0,
+              "mean": 1.0,
+              "min": 1.0
+            },
+            "nvcswch_per_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0
+            }
+          },
+          "rows": 3,
+          "sample_kinds": [
+            "interval"
+          ]
+        },
+        "cpu": {
+          "metrics": {
+            "pct_cpu": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0
+            },
+            "pct_guest": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0
+            },
+            "pct_system": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0
+            },
+            "pct_usr": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0
+            },
+            "pct_wait": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0
+            }
+          },
+          "rows": 3,
+          "sample_kinds": [
+            "interval"
+          ]
+        },
+        "io": {
+          "metrics": {
+            "iodelay": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0
+            },
+            "kb_ccwr_per_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0
+            },
+            "kb_rd_per_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0
+            },
+            "kb_wr_per_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0
+            }
+          },
+          "rows": 3,
+          "sample_kinds": [
+            "interval"
+          ]
+        },
+        "memory": {
+          "metrics": {
+            "majflt_per_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0
+            },
+            "minflt_per_s": {
+              "count": 3.0,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0
+            },
+            "pct_mem": {
+              "count": 3.0,
+              "max": 0.01,
+              "mean": 0.01,
+              "min": 0.01
+            },
+            "rss_kib": {
+              "count": 3.0,
+              "max": 640.0,
+              "mean": 640.0,
+              "min": 640.0
+            },
+            "vsz_kib": {
+              "count": 3.0,
+              "max": 1056.0,
+              "mean": 1056.0,
+              "min": 1056.0
+            }
+          },
+          "rows": 3,
+          "sample_kinds": [
+            "interval"
+          ]
+        }
+      }
+    }
+  },
+  "environment": {
+    "notes": [
+      "WSL detected: use latency, docker stats, and pidstat locally; prefer VPS for perf-based CPU conclusions.",
+      "perf wrapper exists, but no kernel-matched perf binary is available for this WSL kernel."
+    ],
+    "os": {
+      "is_wsl": true,
+      "kernel_release": "6.6.87.2-microsoft-standard-WSL2",
+      "pretty_name": "Ubuntu 24.04.4 LTS"
+    },
+    "recommended_collectors": {
+      "docker_stats": {
+        "enabled": true,
+        "reason": "recommended for docker runtimes"
+      },
+      "iostat": {
+        "enabled": true,
+        "reason": "recommended when you want disk await, queue depth, and %util evidence"
+      },
+      "perf_record": {
+        "enabled": false,
+        "reason": "keep off by default; enable only for targeted profiling runs (docker-multi-resource-profile)"
+      },
+      "perf_stat": {
+        "enabled": false,
+        "reason": "leave disabled on WSL; use VPS for formal CPU profiling"
+      },
+      "pidstat": {
+        "enabled": true,
+        "reason": "recommended for host/container PID tracking"
+      }
+    },
+    "tools": {
+      "docker": true,
+      "iostat": true,
+      "perf": false,
+      "pidstat": true
+    }
+  },
+  "finished_at": "2026-03-20T11:26:47.223783+00:00",
+  "latency_ms": {
+    "connect": {
+      "count": 4.0,
+      "max": 239.171,
+      "mean": 150.053,
+      "min": 101.112,
+      "p50": 135.198,
+      "p95": 239.171,
+      "p99": 239.171
+    },
+    "history": {
+      "count": 100.0,
+      "max": 32.684,
+      "mean": 4.08481,
+      "min": 1.85,
+      "p50": 3.609,
+      "p95": 5.47,
+      "p99": 32.093
+    },
+    "send": {
+      "count": 100.0,
+      "max": 4.408,
+      "mean": 1.1329099999999999,
+      "min": 0.65,
+      "p50": 1.045,
+      "p95": 1.729,
+      "p99": 3.294
+    },
+    "total": {
+      "count": 100.0,
+      "max": 283.182,
+      "mean": 125.57798000000001,
+      "min": 30.901,
+      "p50": 130.049,
+      "p95": 138.352,
+      "p99": 184.077
+    },
+    "wait": {
+      "count": 100.0,
+      "max": 278.374,
+      "mean": 120.31137000000001,
+      "min": 27.758,
+      "p50": 125.119,
+      "p95": 134.75,
+      "p99": 166.839
+    }
+  },
+  "preflight": {
+    "ready": true,
+    "target": {
+      "container_id": "6ad1c52521e13d152d48fa414211d728f7e52ab5567016e3f67a84ad91ddae02",
+      "container_name": "openclaw-bench-docker-multi-resource-profile-176c435e",
+      "healthcheck_url": "http://127.0.0.1:19196/healthz",
+      "host_pid": 23047,
+      "host_pid_source": null,
+      "url": "ws://127.0.0.1:19196"
+    },
+    "warnings": []
+  },
+  "requests_failed": 0,
+  "requests_ok": 100,
+  "requests_total": 100,
+  "scenario": "docker-multi-resource-profile",
+  "started_at": "2026-03-20T11:26:42.489571+00:00",
+  "task": {
+    "category": "",
+    "id": "",
+    "name": "",
+    "source": "message",
+    "task_file": ""
+  }
+}

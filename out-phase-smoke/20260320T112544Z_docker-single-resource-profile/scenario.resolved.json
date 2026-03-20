@@ -1,0 +1,69 @@
+{
+  "artifacts": {
+    "summary_only": false
+  },
+  "client": {
+    "history_limit": 20,
+    "message": "/context list",
+    "resolved_prompt": "/context list",
+    "role": "operator",
+    "send_timeout_ms": 15000,
+    "session_mode": "per_worker",
+    "session_prefix": "bench-resource-single",
+    "task_category": "",
+    "task_description": "",
+    "task_file": "",
+    "task_id": "",
+    "task_name": "",
+    "wait_timeout_ms": 15000
+  },
+  "collectors": {
+    "docker_stats": {
+      "enabled": true,
+      "interval_ms": 1000
+    },
+    "iostat": {
+      "enabled": true,
+      "interval_sec": 1
+    },
+    "perf_record": {
+      "enabled": false
+    },
+    "perf_stat": {
+      "enabled": false,
+      "interval_ms": 1000
+    },
+    "pidstat": {
+      "enabled": true,
+      "interval_sec": 1
+    }
+  },
+  "load": {
+    "concurrency": 1,
+    "request_pause_ms": 0,
+    "requests_per_worker": 100,
+    "worker_stagger_ms": 0
+  },
+  "name": "docker-single-resource-profile",
+  "runtime": {
+    "build_image_if_missing": true,
+    "container_name_base": "openclaw-bench",
+    "container_port": 18789,
+    "dockerfile": "Dockerfile",
+    "force_rebuild": false,
+    "gateway_bind": "lan",
+    "gateway_token": "openclaw-bench-token",
+    "healthcheck_url": "",
+    "host": "127.0.0.1",
+    "host_pid": null,
+    "host_port": 19195,
+    "image": "openclaw:bench-local",
+    "keep_container": false,
+    "kind": "docker",
+    "repo_root": "",
+    "skip_channels": true,
+    "startup_timeout_sec": 240,
+    "ws_url": ""
+  },
+  "scenario_path": "/home/z84436644/openclaw/benchmarks/client-harness/scenarios/docker_single_resource_profile.json"
+}

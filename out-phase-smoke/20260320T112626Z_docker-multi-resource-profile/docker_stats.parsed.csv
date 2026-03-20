@@ -1,0 +1,3 @@
+timestamp,container,cpu_percent_value,mem_percent_value,pids_value,mem_usage_bytes,mem_limit_bytes,net_rx_bytes,net_tx_bytes,block_read_bytes,block_write_bytes
+2026-03-20T11:26:44.077958+00:00,openclaw-bench-docker-multi-resource-profile-176c435e,121.89,22.99,12,1881195675.648,8182986440.704,43600.0,339000.0,0.0,430000.0
+2026-03-20T11:26:46.676534+00:00,openclaw-bench-docker-multi-resource-profile-176c435e,106.62,23.02,12,1883343159.296,8182986440.704,130000.0,3250000.0,0.0,754000.0

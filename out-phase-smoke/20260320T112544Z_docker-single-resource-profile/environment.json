@@ -1,0 +1,112 @@
+{
+  "host": {
+    "is_wsl": true,
+    "kernel_release": "6.6.87.2-microsoft-standard-WSL2",
+    "kernel_version": "#1 SMP PREEMPT_DYNAMIC Thu Jun  5 18:30:46 UTC 2025",
+    "machine": "x86_64",
+    "os_release": {
+      "BUG_REPORT_URL": "https://bugs.launchpad.net/ubuntu/",
+      "HOME_URL": "https://www.ubuntu.com/",
+      "ID": "ubuntu",
+      "ID_LIKE": "debian",
+      "LOGO": "ubuntu-logo",
+      "NAME": "Ubuntu",
+      "PRETTY_NAME": "Ubuntu 24.04.4 LTS",
+      "PRIVACY_POLICY_URL": "https://www.ubuntu.com/legal/terms-and-policies/privacy-policy",
+      "SUPPORT_URL": "https://help.ubuntu.com/",
+      "UBUNTU_CODENAME": "noble",
+      "VERSION": "24.04.4 LTS (Noble Numbat)",
+      "VERSION_CODENAME": "noble",
+      "VERSION_ID": "24.04"
+    },
+    "python": "3.12.3",
+    "wsl_distro_name": "Ubuntu"
+  },
+  "install_hints": {
+    "iostat": {
+      "command": "sudo apt update && sudo apt install -y sysstat",
+      "note": "iostat ships with sysstat on Ubuntu.",
+      "package": "sysstat"
+    },
+    "perf": {
+      "command": "sudo apt update && sudo apt install -y linux-tools-common linux-tools-generic linux-cloud-tools-generic",
+      "note": "WSL kernels often do not have an exact linux-tools package match; if perf is unavailable, collect formal CPU profiles on the VPS instead.",
+      "package": "linux-tools-common linux-tools-generic linux-cloud-tools-generic",
+      "suggested_kernel_packages": "linux-tools-6.6.87.2-microsoft-standard-WSL2 linux-cloud-tools-6.6.87.2-microsoft-standard-WSL2 linux-tools-standard-WSL2 linux-cloud-tools-standard-WSL2",
+      "wsl_note": "If those WSL-specific packages are not present in apt, treat perf as unavailable locally and collect perf data on the VPS."
+    },
+    "pidstat": {
+      "command": "sudo apt update && sudo apt install -y sysstat",
+      "package": "sysstat"
+    }
+  },
+  "notes": [
+    "WSL detected: use latency, docker stats, and pidstat locally; prefer VPS for perf-based CPU conclusions.",
+    "perf wrapper exists, but no kernel-matched perf binary is available for this WSL kernel."
+  ],
+  "recommended_collectors": {
+    "docker_stats": {
+      "enabled": true,
+      "reason": "recommended for docker runtimes"
+    },
+    "iostat": {
+      "enabled": true,
+      "reason": "recommended when you want disk await, queue depth, and %util evidence"
+    },
+    "perf_record": {
+      "enabled": false,
+      "reason": "keep off by default; enable only for targeted profiling runs (docker-single-resource-profile)"
+    },
+    "perf_stat": {
+      "enabled": false,
+      "reason": "leave disabled on WSL; use VPS for formal CPU profiling"
+    },
+    "pidstat": {
+      "enabled": true,
+      "reason": "recommended for host/container PID tracking"
+    }
+  },
+  "scenario": {
+    "configured_collectors": {
+      "docker_stats": true,
+      "iostat": true,
+      "perf_record": false,
+      "perf_stat": false,
+      "pidstat": true
+    },
+    "name": "docker-single-resource-profile",
+    "runtime_kind": "docker"
+  },
+  "tools": {
+    "docker": {
+      "available": true,
+      "detail": "",
+      "path": "/usr/bin/docker",
+      "usable": true
+    },
+    "iostat": {
+      "available": true,
+      "detail": "",
+      "path": "/usr/bin/iostat",
+      "probe_command": "iostat -V",
+      "probe_output": "sysstat version 12.6.1\n(C) Sebastien Godard (sysstat <at> orange.fr)",
+      "usable": true
+    },
+    "perf": {
+      "available": true,
+      "detail": "perf wrapper exists, but no kernel-matched perf binary is available for this WSL kernel.",
+      "path": "/usr/bin/perf",
+      "probe_command": "perf --version",
+      "probe_output": "WARNING: perf not found for kernel 6.6.87.2-microsoft\n\n  You may need to install the following packages for this specific kernel:\n    linux-tools-6.6.87.2-microsoft-standard-WSL2\n    linux-cloud-tools-6.6.87.2-microsoft-standard-WSL2\n\n  You may also want to install one of the following packages to keep up to date:\n    linux-tools-standard-WSL2\n    linux-cloud-tools-standard-WSL2",
+      "usable": false
+    },
+    "pidstat": {
+      "available": true,
+      "detail": "",
+      "path": "/usr/bin/pidstat",
+      "probe_command": "pidstat -V",
+      "probe_output": "sysstat version 12.6.1\n(C) Sebastien Godard (sysstat <at> orange.fr)",
+      "usable": true
+    }
+  }
+}
