@@ -43,7 +43,7 @@
       "interval_sec": 1
     },
     "perf_stat": {
-      "enabled": false
+      "enabled": true
     },
     "perf_record": {
       "enabled": false
