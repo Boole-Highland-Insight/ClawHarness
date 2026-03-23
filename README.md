@@ -18,7 +18,6 @@
 默认场景使用 `/context list`，因此不依赖模型 key。
 本地 Docker 场景遵循当前推荐的 WSL 策略：优先使用 `docker stats` + `pidstat`，
 `perf` 默认关闭，等迁移到 Linux VPS 后再作为正式采集手段启用。
-
 `docker_single_100_summary.json` 和 `docker_multi_100_summary.json` 现在也会开启
 `docker_stats`、`pidstat` 和 `iostat`，因此即使是最基础的 `/context list`
 大样本对比，也会在 `summary.json` 里保留容器 CPU/内存、进程 CPU/内存/IO 和磁盘指标汇总。
@@ -243,3 +242,39 @@ python -m openclaw_harness run --scenario scenarios/docker_multi_task_semianalys
 - 如果没有安装 `pidstat` 或 `perf`，harness 会把对应 collector 标记为 `skipped`，但整次运行仍会继续完成。
 - 在 WSL 上，即使存在 `/usr/bin/perf`，如果缺少与当前内核匹配的 perf 二进制，它仍然可能不可用；这一点会在 `environment.json` 中明确标记。
 - 解析后的 collector 产物会和原始文件一起写在同一目录下，例如 `docker_stats.summary.json`、`pidstat_cpu.csv`、`pidstat.summary.json`、`iostat.summary.json`、`perf_stat.summary.json`。
+
+## 执行测试
+
+写完 `task` 和 `scenario` 之后，真正执行测试的入口只有一个：`run` 子命令。
+
+```bash
+cd client-harness
+python -m openclaw_harness run --scenario scenarios/<your_scenario>.json
+```
+
+如果已经安装了包脚本，也可以直接用：
+
+```bash
+openclaw-harness run --scenario scenarios/<your_scenario>.json
+```
+
+执行时建议记住下面这几个规则：
+
+- `scenario` 是运行计划，必须传给 CLI。
+- `client.task_file` 非空时，harness 会先读取对应的 `tasks/*.md`，再把 task 里的 `prompt` 作为实际发送内容。
+- `client.message` 只是在没有 `task_file` 时才会直接发送，或者作为可读的默认值保留在 scenario 里。
+- 运行产物默认会写到 `out/<timestamp>_<scenario>/`，里面会有 `scenario.resolved.json`、`preflight.json`、`meta.json`、`summary.json`、`latency.csv` 等文件。
+
+最常见的三种用法是：
+
+- 纯 message 场景：只写 `client.message`，不写 `client.task_file`。
+- 复用现有 task：在新的 scenario 里把 `client.task_file` 指向已有的 `tasks/*.md`。
+- 新建 task：先复制 `tasks/TASK_TEMPLATE.md`，再在 scenario 里引用它。
+
+对应的代码位置也很集中：
+
+- `client-harness/src/openclaw_harness/cli.py`：解析 `run --scenario ...` 命令。
+- `client-harness/src/openclaw_harness/scenario.py`：加载 scenario，解析 `task_file`，生成最终的 `resolved_prompt`。
+- `client-harness/src/openclaw_harness/runner.py`：真正执行 `chat.send -> agent.wait -> chat.history`，并写出运行产物。
+
+如果你想快速检查某个场景到底会发什么，可以先看 `scenario.resolved.json` 里的 `client.resolved_prompt`，它就是最终发送给 gateway 的内容。

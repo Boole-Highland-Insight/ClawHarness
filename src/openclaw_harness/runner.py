@@ -352,5 +352,17 @@ async def run_scenario(
     summary["finished_at"] = iso_now()
     write_summary(run_dir / "summary.json", summary)
     if scenario.artifacts.summary_only:
-        prune_run_artifacts(run_dir=run_dir, keep_files={"summary.json"})
+        prune_run_artifacts(
+            run_dir=run_dir,
+            keep_files={
+                "summary.json",
+                "latency.csv",
+                "docker_stats.csv",
+                "perf_stat.csv",
+                "perf_stat.parsed.csv",
+                "perf_stat.summary.json",
+                "pidstat.log",
+                "iostat.log",
+            },
+        )
     return run_dir
