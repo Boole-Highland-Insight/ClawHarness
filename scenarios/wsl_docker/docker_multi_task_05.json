@@ -1,5 +1,5 @@
 {
-  "name": "docker-multi-task-semianalysis-100-summary",
+  "name": "docker-multi-task-05-100",
   "runtime": {
     "kind": "docker",
     "image": "openclaw:bench-local",
@@ -10,23 +10,23 @@
     "gateway_bind": "lan",
     "gateway_token": "openclaw-bench-token",
     "build_image_if_missing": true,
-    "force_rebuild": false,
+    "force_rebuild": true,
     "skip_channels": true,
     "startup_timeout_sec": 240
   },
   "client": {
     "role": "operator",
     "message": "",
-    "task_file": "../tasks/task_05_semianalysis_title.md",
-    "session_prefix": "bench-semianalysis-multi-100",
+    "task_file": "../../tasks/task_05_semianalysis_title.md",
+    "session_prefix": "bench-multi-task-05-100",
     "session_mode": "per_worker",
     "history_limit": 20,
     "wait_timeout_ms": 60000,
     "send_timeout_ms": 15000
   },
   "load": {
-    "concurrency": 4,
-    "requests_per_worker": 25,
+    "concurrency": 20,
+    "requests_per_worker": 5,
     "worker_stagger_ms": 150,
     "request_pause_ms": 0
   },
@@ -51,6 +51,6 @@
     }
   },
   "artifacts": {
-    "summary_only": true
+    "summary_only": false
   }
 }

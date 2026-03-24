@@ -10,7 +10,7 @@
     "gateway_bind": "lan",
     "gateway_token": "openclaw-bench-token",
     "build_image_if_missing": true,
-    "force_rebuild": false,
+    "force_rebuild": true,
     "skip_channels": true,
     "startup_timeout_sec": 240
   },
