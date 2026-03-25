@@ -46,63 +46,74 @@ class GatewayClient:
 
     async def connect(self) -> float:
         started = perf_counter_ns()
-        loop = asyncio.get_running_loop()
-        self._challenge_nonce = loop.create_future()
-        self._ws = await websockets.connect(self.url, open_timeout=8, max_size=10_000_000)
-        self._reader_task = asyncio.create_task(self._reader())
-        nonce = await asyncio.wait_for(self._challenge_nonce, timeout=5)
-        signed_at_ms = int(time() * 1000)
-        client_id = "gateway-client"
-        client_mode = "backend"
-        platform = "linux"
-        scopes = ["operator.admin"]
-        device = None
-        if self.device_identity is not None:
-            payload = build_device_auth_payload_v3(
-                device_id=self.device_identity.device_id,
-                client_id=client_id,
-                client_mode=client_mode,
-                role=self.role,
-                scopes=scopes,
-                signed_at_ms=signed_at_ms,
-                token=self.token,
-                nonce=nonce,
-                platform=platform,
-                device_family=None,
-            )
-            device = {
-                "id": self.device_identity.device_id,
-                "publicKey": self.device_identity.public_key_raw,
-                "signature": sign_device_payload(self.device_identity.private_key_pem, payload),
-                "signedAt": signed_at_ms,
-                "nonce": nonce,
-            }
-        response = await self.request(
-            "connect",
-            {
-                "minProtocol": 3,
-                "maxProtocol": 3,
-                "client": {
-                    "id": client_id,
-                    "displayName": "openclaw benchmark harness",
-                    "version": "0.1.0",
-                    "platform": platform,
-                    "mode": client_mode,
-                    "instanceId": self.instance_id,
-                },
-                "locale": "en-US",
-                "userAgent": "openclaw-client-harness",
-                "role": self.role,
-                "scopes": scopes,
-                "caps": [],
-                "auth": {"token": self.token},
-                "device": device,
-            },
-            timeout_ms=12_000,
-        )
-        if not response.ok:
-            raise GatewayError(f"connect failed: {response.error}")
-        return (perf_counter_ns() - started) / 1_000_000.0
+        last_error: Exception | None = None
+        for attempt in range(3):
+            try:
+                await self.close()
+                loop = asyncio.get_running_loop()
+                self._challenge_nonce = loop.create_future()
+                self._ws = await websockets.connect(self.url, open_timeout=12, max_size=10_000_000)
+                self._reader_task = asyncio.create_task(self._reader())
+                nonce = await asyncio.wait_for(self._challenge_nonce, timeout=8)
+                signed_at_ms = int(time() * 1000)
+                client_id = "gateway-client"
+                client_mode = "backend"
+                platform = "linux"
+                scopes = ["operator.admin"]
+                device = None
+                if self.device_identity is not None:
+                    payload = build_device_auth_payload_v3(
+                        device_id=self.device_identity.device_id,
+                        client_id=client_id,
+                        client_mode=client_mode,
+                        role=self.role,
+                        scopes=scopes,
+                        signed_at_ms=signed_at_ms,
+                        token=self.token,
+                        nonce=nonce,
+                        platform=platform,
+                        device_family=None,
+                    )
+                    device = {
+                        "id": self.device_identity.device_id,
+                        "publicKey": self.device_identity.public_key_raw,
+                        "signature": sign_device_payload(self.device_identity.private_key_pem, payload),
+                        "signedAt": signed_at_ms,
+                        "nonce": nonce,
+                    }
+                response = await self.request(
+                    "connect",
+                    {
+                        "minProtocol": 3,
+                        "maxProtocol": 3,
+                        "client": {
+                            "id": client_id,
+                            "displayName": "openclaw benchmark harness",
+                            "version": "0.1.0",
+                            "platform": platform,
+                            "mode": client_mode,
+                            "instanceId": self.instance_id,
+                        },
+                        "locale": "en-US",
+                        "userAgent": "openclaw-client-harness",
+                        "role": self.role,
+                        "scopes": scopes,
+                        "caps": [],
+                        "auth": {"token": self.token},
+                        "device": device,
+                    },
+                    timeout_ms=30_000,
+                )
+                if not response.ok:
+                    raise GatewayError(f"connect failed: {response.error}")
+                return (perf_counter_ns() - started) / 1_000_000.0
+            except (TimeoutError, asyncio.TimeoutError, OSError, websockets.WebSocketException, GatewayError) as exc:
+                last_error = exc
+                if attempt >= 2:
+                    break
+                await asyncio.sleep(0.5 * (attempt + 1))
+        assert last_error is not None
+        raise last_error
 
     async def close(self) -> None:
         if self._ws is not None:

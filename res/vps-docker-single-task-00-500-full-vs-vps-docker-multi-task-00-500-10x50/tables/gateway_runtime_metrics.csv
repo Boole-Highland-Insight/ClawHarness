@@ -1,0 +1,3 @@
+scenario,bootstrap_load_mean_ms,skills_mean_ms,context_bundle_mean_ms,execution_admission_wait_mean_ms,reply_dispatch_queue_wait_mean_ms,reply_dispatch_queue_hold_mean_ms,reply_dispatch_pending_mean
+vps-docker-single-task-00-500-full,2.758,698.85,742.934,0.142598,0.00206,0.003178,2.0
+vps-docker-multi-task-00-500-10x50,22.0,700.802,764.308,9.252595999999999,0.002036,0.003212,2.0

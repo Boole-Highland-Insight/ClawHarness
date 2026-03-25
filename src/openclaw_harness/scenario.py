@@ -55,7 +55,13 @@ class StraceConfig:
         default_factory=lambda: [
             "read",
             "write",
+            "openat",
+            "statx",
+            "newfstatat",
+            "pread64",
             "futex",
+            "clone",
+            "sched_yield",
             "epoll_wait",
             "clock_nanosleep",
             "poll",
@@ -66,10 +72,25 @@ class StraceConfig:
 
 
 @dataclass(slots=True)
+class NodeTraceConfig:
+    enabled: bool = False
+    categories: list[str] = field(
+        default_factory=lambda: [
+            "v8",
+            "node",
+            "node.async_hooks",
+            "node.environment",
+            "node.fs",
+        ],
+    )
+
+
+@dataclass(slots=True)
 class CollectorsConfig:
     docker_stats: DockerStatsConfig = field(default_factory=DockerStatsConfig)
     pidstat: PidstatConfig = field(default_factory=PidstatConfig)
     strace: StraceConfig = field(default_factory=StraceConfig)
+    node_trace: NodeTraceConfig = field(default_factory=NodeTraceConfig)
     perf_stat: PerfStatConfig = field(default_factory=PerfStatConfig)
     perf_record: PerfRecordConfig = field(default_factory=PerfRecordConfig)
     iostat: "IostatConfig" = field(default_factory=lambda: IostatConfig())
@@ -180,6 +201,7 @@ def load_scenario(path: Path) -> ScenarioConfig:
     _merge_dataclass(collector_raw.get("docker_stats"), scenario.collectors.docker_stats)
     _merge_dataclass(collector_raw.get("pidstat"), scenario.collectors.pidstat)
     _merge_dataclass(collector_raw.get("strace"), scenario.collectors.strace)
+    _merge_dataclass(collector_raw.get("node_trace"), scenario.collectors.node_trace)
     _merge_dataclass(collector_raw.get("perf_stat"), scenario.collectors.perf_stat)
     _merge_dataclass(collector_raw.get("perf_record"), scenario.collectors.perf_record)
     _merge_dataclass(collector_raw.get("iostat"), scenario.collectors.iostat)

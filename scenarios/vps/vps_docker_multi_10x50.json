@@ -41,6 +41,9 @@
     "strace": {
       "enabled": true
     },
+    "node_trace": {
+      "enabled": true
+    },
     "iostat": {
       "enabled": true,
       "interval_sec": 1

@@ -1,0 +1,6 @@
+,syscall,count,total_duration_sec
+0,futex,105278,4138.578739
+1,statx,800778,17.436087
+2,openat,159423,4.421261
+3,read,186869,4.088928
+4,write,81634,2.528096

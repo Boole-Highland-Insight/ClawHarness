@@ -171,6 +171,8 @@ def build_resource_profile_row(summary: dict[str, Any], run_dir: Path) -> dict[s
     vmstat = nested_get(summary, ["collector_analysis", "vmstat"], {})
     perf_stat = nested_get(summary, ["collector_analysis", "perf_stat"], {})
     strace = nested_get(summary, ["collector_analysis", "strace"], {})
+    node_trace = nested_get(summary, ["collector_analysis", "node_trace"], {})
+    gateway_runtime = nested_get(summary, ["collector_analysis", "gateway_runtime_spans"], {})
     busiest_device = (
         nested_get(summary, ["collector_analysis", "iostat", "key_metrics", "busiest_device"])
         or iostat.get("busiest_device_by_util_mean")
@@ -275,6 +277,83 @@ def build_resource_profile_row(summary: dict[str, Any], run_dir: Path) -> dict[s
             strace,
             ["top_by_total_duration_sec", 0, "total_duration_sec"],
         ),
+        "node_fs_async_mean_ms": metric_summary_mean(
+            node_trace,
+            ["key_metric_summaries", "fs_async_duration_ms"],
+        ),
+        "node_fs_callback_mean_ms": metric_summary_mean(
+            node_trace,
+            ["key_metric_summaries", "fs_callback_duration_ms"],
+        ),
+        "node_promise_callback_mean_ms": metric_summary_mean(
+            node_trace,
+            ["key_metric_summaries", "promise_callback_duration_ms"],
+        ),
+        "node_event_loop_immediate_mean_ms": metric_summary_mean(
+            node_trace,
+            ["key_metric_summaries", "event_loop_immediate_duration_ms"],
+        ),
+        "node_event_loop_timers_mean_ms": metric_summary_mean(
+            node_trace,
+            ["key_metric_summaries", "event_loop_timers_duration_ms"],
+        ),
+        "node_fs_async_count": nested_get(node_trace, ["key_counts", "fs_async_count"]),
+        "node_fs_callback_count": nested_get(node_trace, ["key_counts", "fs_callback_count"]),
+        "node_promise_callback_count": nested_get(node_trace, ["key_counts", "promise_callback_count"]),
+        "node_top_fs_path": nested_get(node_trace, ["path_hotspots", "top_by_count", 0, "path"], ""),
+        "node_top_fs_path_count": nested_get(node_trace, ["path_hotspots", "top_by_count", 0, "count"]),
+        "gateway_bootstrap_load_mean_ms": metric_summary_mean(
+            gateway_runtime,
+            ["key_metric_summaries", "bootstrap_load"],
+        ),
+        "gateway_skills_mean_ms": metric_summary_mean(
+            gateway_runtime,
+            ["key_metric_summaries", "skills"],
+        ),
+        "gateway_context_bundle_mean_ms": metric_summary_mean(
+            gateway_runtime,
+            ["key_metric_summaries", "context_bundle"],
+        ),
+        "gateway_execution_admission_wait_mean_ms": metric_summary_mean(
+            gateway_runtime,
+            ["key_metric_summaries", "execution_admission_wait"],
+        ),
+        "gateway_reply_dispatch_queue_wait_mean_ms": metric_summary_mean(
+            gateway_runtime,
+            ["key_metric_summaries", "reply_dispatch_queue_wait"],
+        ),
+        "gateway_reply_dispatch_queue_hold_mean_ms": metric_summary_mean(
+            gateway_runtime,
+            ["key_metric_summaries", "reply_dispatch_queue_hold"],
+        ),
+        "gateway_reply_dispatch_pending_mean": metric_summary_mean(
+            gateway_runtime,
+            ["key_metric_summaries", "reply_dispatch_pending"],
+        ),
+        "node_sessions_lock_total_ms": nested_get(
+            node_trace,
+            ["path_hotspots", "focus_groups", "sessions_lock", "total_duration_ms"],
+        ),
+        "node_sessions_lock_count": nested_get(
+            node_trace,
+            ["path_hotspots", "focus_groups", "sessions_lock", "count"],
+        ),
+        "node_sessions_dir_total_ms": nested_get(
+            node_trace,
+            ["path_hotspots", "focus_groups", "sessions_dir", "total_duration_ms"],
+        ),
+        "node_sessions_dir_count": nested_get(
+            node_trace,
+            ["path_hotspots", "focus_groups", "sessions_dir", "count"],
+        ),
+        "node_bootstrap_files_total_ms": nested_get(
+            node_trace,
+            ["path_hotspots", "focus_groups", "bootstrap_files", "total_duration_ms"],
+        ),
+        "node_bootstrap_files_count": nested_get(
+            node_trace,
+            ["path_hotspots", "focus_groups", "bootstrap_files", "count"],
+        ),
     }
 
 
@@ -354,9 +433,264 @@ def build_strace_top_table(summary: dict[str, Any], *, top_n: int = 5) -> pd.Dat
     return pd.DataFrame(rows)
 
 
+def build_strace_key_syscalls_row(summary: dict[str, Any], *, run_dir: Path) -> dict[str, Any]:
+    strace = nested_get(summary, ["collector_analysis", "strace"], {})
+    syscalls = nested_get(strace, ["syscalls"], {})
+    keys = ["openat", "statx", "newfstatat", "pread64", "clone", "sched_yield", "futex", "read", "write"]
+
+    row: dict[str, Any] = {
+        "scenario": summary["scenario"],
+        "run_dir": str(run_dir),
+    }
+    for key in keys:
+        item = syscalls.get(key, {}) if isinstance(syscalls, dict) else {}
+        duration_ms = item.get("duration_ms", {}) if isinstance(item, dict) else {}
+        duration_sec = item.get("duration_sec", {}) if isinstance(item, dict) else {}
+        mean_sec = duration_sec.get("mean") if isinstance(duration_sec, dict) else None
+        count = item.get("count") if isinstance(item, dict) else None
+        total_sec = None
+        if isinstance(mean_sec, (int, float)) and isinstance(count, (int, float)):
+            total_sec = float(mean_sec) * float(count)
+        row[f"{key}_count"] = count
+        row[f"{key}_total_sec"] = total_sec
+        row[f"{key}_mean_ms"] = duration_ms.get("mean") if isinstance(duration_ms, dict) else None
+    return row
+
+
+def estimate_makespan_sec(summary: dict[str, Any]) -> float | None:
+    started_at = summary.get("started_at")
+    finished_at = summary.get("finished_at")
+    if isinstance(started_at, str) and isinstance(finished_at, str):
+        try:
+            started = pd.to_datetime(started_at, utc=True)
+            finished = pd.to_datetime(finished_at, utc=True)
+            duration = (finished - started).total_seconds()
+            if duration > 0:
+                return float(duration)
+        except Exception:
+            pass
+
+    requests_total = summary.get("requests_total")
+    total_mean_ms = nested_get(summary, ["latency_ms", "total", "mean"])
+    if not isinstance(requests_total, (int, float)) or not isinstance(total_mean_ms, (int, float)):
+        return None
+    return (float(requests_total) * float(total_mean_ms)) / 1000.0
+
+
+def enrich_strace_normalized_metrics(df: pd.DataFrame, summaries: dict[str, dict[str, Any]]) -> pd.DataFrame:
+    enriched = df.copy()
+    syscall_prefixes = ["futex", "statx", "openat"]
+    for scenario in enriched.index:
+        summary = summaries.get(str(scenario), {})
+        requests_total = summary.get("requests_total")
+        wall_sec = estimate_makespan_sec(summary)
+        for prefix in syscall_prefixes:
+            total_col = f"{prefix}_total_sec"
+            total_value = enriched.at[scenario, total_col] if total_col in enriched.columns else None
+            per_request = None
+            per_wall_sec = None
+            if isinstance(total_value, (int, float)) and isinstance(requests_total, (int, float)) and float(requests_total) > 0:
+                per_request = float(total_value) / float(requests_total)
+            if isinstance(total_value, (int, float)) and isinstance(wall_sec, (int, float)) and float(wall_sec) > 0:
+                per_wall_sec = float(total_value) / float(wall_sec)
+            enriched.at[scenario, f"{prefix}_total_sec_per_request"] = per_request
+            enriched.at[scenario, f"{prefix}_total_sec_per_wall_sec"] = per_wall_sec
+        enriched.at[scenario, "estimated_makespan_sec"] = wall_sec
+    return enriched
+
+
+def build_strace_mean_duration_df(df: pd.DataFrame) -> pd.DataFrame:
+    columns = [
+        "openat_mean_ms",
+        "statx_mean_ms",
+        "newfstatat_mean_ms",
+        "pread64_mean_ms",
+        "clone_mean_ms",
+        "sched_yield_mean_ms",
+        "futex_mean_ms",
+        "read_mean_ms",
+        "write_mean_ms",
+    ]
+    labels = {
+        "openat_mean_ms": "openat",
+        "statx_mean_ms": "statx",
+        "newfstatat_mean_ms": "newfstatat",
+        "pread64_mean_ms": "pread64",
+        "clone_mean_ms": "clone",
+        "sched_yield_mean_ms": "sched_yield",
+        "futex_mean_ms": "futex",
+        "read_mean_ms": "read",
+        "write_mean_ms": "write",
+    }
+    available = [column for column in columns if column in df.columns]
+    mean_df = df[available].rename(columns=labels)
+    return mean_df.T
+
+
+def build_runtime_category_row(summary: dict[str, Any], *, run_dir: Path) -> dict[str, Any]:
+    perf_record = nested_get(summary, ["collector_analysis", "perf_record", "runtime_samples"], {})
+    categories = nested_get(perf_record, ["categories"], {})
+    keys = [
+        "fs_worker_exec",
+        "fs_callback",
+        "event_loop_poll",
+        "microtask",
+        "futex_sync",
+        "worker_message",
+        "json_parse",
+        "libuv_worker_other",
+        "gateway_main_other",
+        "v8_worker",
+        "other",
+    ]
+    row: dict[str, Any] = {
+        "scenario": summary["scenario"],
+        "run_dir": str(run_dir),
+        "sample_count": nested_get(perf_record, ["sample_count"]),
+    }
+    for key in keys:
+        row[f"{key}_count"] = nested_get(categories, [key, "count"])
+        row[f"{key}_pct"] = nested_get(categories, [key, "pct"])
+    return row
+
+
+def build_runtime_category_pct_df(df: pd.DataFrame) -> pd.DataFrame:
+    pct_columns = [column for column in df.columns if column.endswith("_pct")]
+    labels = {column: column[:-4] for column in pct_columns}
+    return df[pct_columns].rename(columns=labels).T
+
+
+def build_node_runtime_table(profile_df: pd.DataFrame) -> pd.DataFrame:
+    return profile_df[
+        [
+            "node_fs_async_mean_ms",
+            "node_fs_callback_mean_ms",
+            "node_promise_callback_mean_ms",
+            "node_event_loop_immediate_mean_ms",
+            "node_event_loop_timers_mean_ms",
+            "node_fs_async_count",
+            "node_fs_callback_count",
+            "node_promise_callback_count",
+        ]
+    ].rename(
+        columns={
+            "node_fs_async_mean_ms": "fs_async_mean_ms",
+            "node_fs_callback_mean_ms": "fs_callback_mean_ms",
+            "node_promise_callback_mean_ms": "promise_callback_mean_ms",
+            "node_event_loop_immediate_mean_ms": "event_loop_immediate_mean_ms",
+            "node_event_loop_timers_mean_ms": "event_loop_timers_mean_ms",
+            "node_fs_async_count": "fs_async_count",
+            "node_fs_callback_count": "fs_callback_count",
+            "node_promise_callback_count": "promise_callback_count",
+        }
+    )
+
+
+def build_node_runtime_mean_duration_df(df: pd.DataFrame) -> pd.DataFrame:
+    columns = {
+        "node_fs_async_mean_ms": "fs_async",
+        "node_fs_callback_mean_ms": "fs_callback",
+        "node_promise_callback_mean_ms": "promise_callback",
+        "node_event_loop_immediate_mean_ms": "event_loop_immediate",
+        "node_event_loop_timers_mean_ms": "event_loop_timers",
+    }
+    available = [column for column in columns if column in df.columns]
+    return df[available].rename(columns=columns).T
+
+
+def build_node_trace_top_paths_table(summary: dict[str, Any], *, top_n: int = 5) -> pd.DataFrame | None:
+    top_paths = nested_get(summary, ["collector_analysis", "node_trace", "path_hotspots", "top_by_count"], [])
+    if not isinstance(top_paths, list) or not top_paths:
+        return None
+    rows: list[dict[str, Any]] = []
+    for item in top_paths[:top_n]:
+        if not isinstance(item, dict):
+            continue
+        rows.append(
+            {
+                "path": item.get("path", ""),
+                "count": item.get("count"),
+                "total_duration_ms": item.get("total_duration_ms"),
+            }
+        )
+    if not rows:
+        return None
+    return pd.DataFrame(rows)
+
+
+def build_node_trace_path_categories_table(summary: dict[str, Any]) -> pd.DataFrame | None:
+    categories = nested_get(summary, ["collector_analysis", "node_trace", "path_hotspots", "categories"], {})
+    if not isinstance(categories, dict) or not categories:
+        return None
+    rows: list[dict[str, Any]] = []
+    for category, payload in categories.items():
+        if not isinstance(payload, dict):
+            continue
+        rows.append(
+            {
+                "category": category,
+                "count": payload.get("count"),
+                "total_duration_ms": payload.get("total_duration_ms"),
+            }
+        )
+    if not rows:
+        return None
+    return pd.DataFrame(rows).sort_values(by="count", ascending=False)
+
+
+def build_gateway_runtime_table(profile_df: pd.DataFrame) -> pd.DataFrame:
+    return profile_df[
+        [
+            "gateway_bootstrap_load_mean_ms",
+            "gateway_skills_mean_ms",
+            "gateway_context_bundle_mean_ms",
+            "gateway_execution_admission_wait_mean_ms",
+            "gateway_reply_dispatch_queue_wait_mean_ms",
+            "gateway_reply_dispatch_queue_hold_mean_ms",
+            "gateway_reply_dispatch_pending_mean",
+        ]
+    ].rename(
+        columns={
+            "gateway_bootstrap_load_mean_ms": "bootstrap_load_mean_ms",
+            "gateway_skills_mean_ms": "skills_mean_ms",
+            "gateway_context_bundle_mean_ms": "context_bundle_mean_ms",
+            "gateway_execution_admission_wait_mean_ms": "execution_admission_wait_mean_ms",
+            "gateway_reply_dispatch_queue_wait_mean_ms": "reply_dispatch_queue_wait_mean_ms",
+            "gateway_reply_dispatch_queue_hold_mean_ms": "reply_dispatch_queue_hold_mean_ms",
+            "gateway_reply_dispatch_pending_mean": "reply_dispatch_pending_mean",
+        }
+    )
+
+
+def build_node_focus_groups_table(profile_df: pd.DataFrame) -> pd.DataFrame:
+    return profile_df[
+        [
+            "node_sessions_lock_total_ms",
+            "node_sessions_lock_count",
+            "node_sessions_dir_total_ms",
+            "node_sessions_dir_count",
+            "node_bootstrap_files_total_ms",
+            "node_bootstrap_files_count",
+        ]
+    ].rename(
+        columns={
+            "node_sessions_lock_total_ms": "sessions_lock_total_ms",
+            "node_sessions_lock_count": "sessions_lock_count",
+            "node_sessions_dir_total_ms": "sessions_dir_total_ms",
+            "node_sessions_dir_count": "sessions_dir_count",
+            "node_bootstrap_files_total_ms": "bootstrap_files_total_ms",
+            "node_bootstrap_files_count": "bootstrap_files_count",
+        }
+    )
+
+
 def save_dataframe(df: pd.DataFrame, output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(output_path)
+
+
+def has_dataframe_data(df: pd.DataFrame | None) -> bool:
+    return isinstance(df, pd.DataFrame) and not df.empty and len(df.columns) > 0
 
 
 def plot_dataframe(df: pd.DataFrame, title: str, ylabel: str, output_path: Path) -> None:
@@ -531,6 +865,51 @@ def build_pair_outputs(
         ]
     ).set_index("scenario")
     save_dataframe(peak_df, pair_dir / "tables" / "timeline_peaks.csv")
+    strace_key_syscalls_df = pd.DataFrame(
+        [
+            build_strace_key_syscalls_row(left_summary, run_dir=left_run_dir),
+            build_strace_key_syscalls_row(right_summary, run_dir=right_run_dir),
+        ]
+    ).set_index("scenario")
+    strace_key_syscalls_df = enrich_strace_normalized_metrics(
+        strace_key_syscalls_df,
+        {
+            left_summary["scenario"]: left_summary,
+            right_summary["scenario"]: right_summary,
+        },
+    )
+    save_dataframe(strace_key_syscalls_df, pair_dir / "tables" / "strace_key_syscalls.csv")
+    strace_mean_duration_df = build_strace_mean_duration_df(strace_key_syscalls_df)
+    save_dataframe(strace_mean_duration_df, pair_dir / "tables" / "strace_mean_duration_ms.csv")
+    runtime_category_df = pd.DataFrame(
+        [
+            build_runtime_category_row(left_summary, run_dir=left_run_dir),
+            build_runtime_category_row(right_summary, run_dir=right_run_dir),
+        ]
+    ).set_index("scenario")
+    save_dataframe(runtime_category_df, pair_dir / "tables" / "runtime_category_samples.csv")
+    runtime_category_pct_df = build_runtime_category_pct_df(runtime_category_df)
+    save_dataframe(runtime_category_pct_df, pair_dir / "tables" / "runtime_category_pct.csv")
+    gateway_runtime_df = build_gateway_runtime_table(profile_df)
+    save_dataframe(gateway_runtime_df, pair_dir / "tables" / "gateway_runtime_metrics.csv")
+    node_focus_groups_df = build_node_focus_groups_table(profile_df)
+    save_dataframe(node_focus_groups_df, pair_dir / "tables" / "node_focus_groups.csv")
+    node_runtime_df = build_node_runtime_table(profile_df)
+    if has_dataframe_data(node_runtime_df):
+        save_dataframe(node_runtime_df, pair_dir / "tables" / "node_runtime_metrics.csv")
+    node_runtime_mean_duration_df = build_node_runtime_mean_duration_df(profile_df)
+    if has_dataframe_data(node_runtime_mean_duration_df):
+        save_dataframe(node_runtime_mean_duration_df, pair_dir / "tables" / "node_runtime_mean_duration_ms.csv")
+    node_focus_groups_duration_df = node_focus_groups_df[
+        ["sessions_lock_total_ms", "sessions_dir_total_ms", "bootstrap_files_total_ms"]
+    ].rename(
+        columns={
+            "sessions_lock_total_ms": "sessions_lock",
+            "sessions_dir_total_ms": "sessions_dir",
+            "bootstrap_files_total_ms": "bootstrap_files",
+        }
+    ).T
+    save_dataframe(node_focus_groups_duration_df, pair_dir / "tables" / "node_focus_group_duration_ms.csv")
 
     latency_overview_df = profile_df[
         ["total_mean_ms", "total_p50_ms", "total_p95_ms", "total_p99_ms"]
@@ -678,16 +1057,35 @@ def build_pair_outputs(
         "disk_metrics": disk_df,
         "system_metrics": system_df,
         "timeline_peaks": peak_table_df,
+        "strace_key_syscalls": strace_key_syscalls_df,
+        "gateway_runtime_metrics": gateway_runtime_df,
+        "node_focus_groups": node_focus_groups_df,
+        "node_runtime_metrics": node_runtime_df,
+        "node_runtime_mean_duration_ms": node_runtime_mean_duration_df,
+        "runtime_category_samples": runtime_category_df,
+        "runtime_category_pct": runtime_category_pct_df,
     }
     for name, df in table_map.items():
         save_dataframe(df, pair_dir / "tables" / f"{name}.csv")
 
     left_strace_top_df = build_strace_top_table(left_summary)
     right_strace_top_df = build_strace_top_table(right_summary)
+    left_node_paths_df = build_node_trace_top_paths_table(left_summary)
+    right_node_paths_df = build_node_trace_top_paths_table(right_summary)
+    left_node_categories_df = build_node_trace_path_categories_table(left_summary)
+    right_node_categories_df = build_node_trace_path_categories_table(right_summary)
     if left_strace_top_df is not None:
         save_dataframe(left_strace_top_df, pair_dir / "tables" / f"{safe_slug(left_name)}_strace_top_syscalls.csv")
     if right_strace_top_df is not None:
         save_dataframe(right_strace_top_df, pair_dir / "tables" / f"{safe_slug(right_name)}_strace_top_syscalls.csv")
+    if left_node_paths_df is not None:
+        save_dataframe(left_node_paths_df, pair_dir / "tables" / f"{safe_slug(left_name)}_node_trace_top_paths.csv")
+    if right_node_paths_df is not None:
+        save_dataframe(right_node_paths_df, pair_dir / "tables" / f"{safe_slug(right_name)}_node_trace_top_paths.csv")
+    if left_node_categories_df is not None:
+        save_dataframe(left_node_categories_df, pair_dir / "tables" / f"{safe_slug(left_name)}_node_trace_path_categories.csv")
+    if right_node_categories_df is not None:
+        save_dataframe(right_node_categories_df, pair_dir / "tables" / f"{safe_slug(right_name)}_node_trace_path_categories.csv")
 
     if render_figures:
         plt.style.use("seaborn-v0_8-whitegrid")
@@ -848,6 +1246,63 @@ def build_pair_outputs(
             title="strace Timeline",
             output_path=pair_dir / "figures" / "strace_timeline.png",
         )
+        plot_dataframe(
+            strace_mean_duration_df,
+            "strace Mean Syscall Duration",
+            "milliseconds",
+            pair_dir / "figures" / "strace_mean_duration_ms.png",
+        )
+        plot_dataframe(
+            runtime_category_pct_df,
+            "perf Runtime Sample Categories",
+            "percent of samples",
+            pair_dir / "figures" / "runtime_category_pct.png",
+        )
+        if has_dataframe_data(node_runtime_mean_duration_df):
+            plot_dataframe(
+                node_runtime_mean_duration_df,
+                "Node Runtime Mean Duration",
+                "milliseconds",
+                pair_dir / "figures" / "node_runtime_mean_duration_ms.png",
+            )
+        plot_dataframe(
+            node_focus_groups_duration_df,
+            "Node Focus Group Duration",
+            "total duration (ms)",
+            pair_dir / "figures" / "node_focus_group_duration_ms.png",
+        )
+        plot_time_series_panels(
+            panel_specs=[
+                {
+                    "subtitle": "FS Async Duration per Second",
+                    "ylabel": "ms/sec",
+                    "left": time_series_points(left_summary, ["collector_analysis", "node_trace", "time_series", "fs_async_duration_ms_per_s"]),
+                    "right": time_series_points(right_summary, ["collector_analysis", "node_trace", "time_series", "fs_async_duration_ms_per_s"]),
+                },
+                {
+                    "subtitle": "FS Callback Duration per Second",
+                    "ylabel": "ms/sec",
+                    "left": time_series_points(left_summary, ["collector_analysis", "node_trace", "time_series", "fs_callback_duration_ms_per_s"]),
+                    "right": time_series_points(right_summary, ["collector_analysis", "node_trace", "time_series", "fs_callback_duration_ms_per_s"]),
+                },
+                {
+                    "subtitle": "Promise Callback Duration per Second",
+                    "ylabel": "ms/sec",
+                    "left": time_series_points(left_summary, ["collector_analysis", "node_trace", "time_series", "promise_callback_duration_ms_per_s"]),
+                    "right": time_series_points(right_summary, ["collector_analysis", "node_trace", "time_series", "promise_callback_duration_ms_per_s"]),
+                },
+                {
+                    "subtitle": "Event Loop Duration per Second",
+                    "ylabel": "ms/sec",
+                    "left": time_series_points(left_summary, ["collector_analysis", "node_trace", "time_series", "event_loop_duration_ms_per_s"]),
+                    "right": time_series_points(right_summary, ["collector_analysis", "node_trace", "time_series", "event_loop_duration_ms_per_s"]),
+                },
+            ],
+            label_a=left_name,
+            label_b=right_name,
+            title="Node Runtime Timeline",
+            output_path=pair_dir / "figures" / "node_runtime_timeline.png",
+        )
 
     figure_paths = [
         ("Latency Overview", pair_dir / "figures" / "latency_overview.png"),
@@ -861,6 +1316,11 @@ def build_pair_outputs(
         ("Interrupt Timeline", pair_dir / "figures" / "interrupts_timeline.png"),
         ("Context Switch Timeline", pair_dir / "figures" / "context_switch_timeline.png"),
         ("strace Timeline", pair_dir / "figures" / "strace_timeline.png"),
+        ("strace Mean Duration", pair_dir / "figures" / "strace_mean_duration_ms.png"),
+        ("Node Focus Group Duration", pair_dir / "figures" / "node_focus_group_duration_ms.png"),
+        ("Node Runtime Mean Duration", pair_dir / "figures" / "node_runtime_mean_duration_ms.png"),
+        ("Node Runtime Timeline", pair_dir / "figures" / "node_runtime_timeline.png"),
+        ("Runtime Category Samples", pair_dir / "figures" / "runtime_category_pct.png"),
     ]
     figure_lines = [f"- ![{label}](figures/{path.name})" for label, path in figure_paths if path.exists()]
 
@@ -910,6 +1370,30 @@ def build_pair_outputs(
             "",
             dataframe_to_markdown(peak_table_df),
             "",
+            "**strace Key Syscalls Table**",
+            "",
+            dataframe_to_markdown(strace_key_syscalls_df),
+            "",
+            "**strace Mean Duration Table**",
+            "",
+            dataframe_to_markdown(strace_mean_duration_df),
+            "",
+            "**Gateway Runtime Stage Table**",
+            "",
+            dataframe_to_markdown(gateway_runtime_df),
+            "",
+            "**Node Focus Groups Table**",
+            "",
+            dataframe_to_markdown(node_focus_groups_df),
+            "",
+            "**Runtime Category Samples Table**",
+            "",
+            dataframe_to_markdown(runtime_category_df),
+            "",
+            "**Runtime Category Percent Table**",
+            "",
+            dataframe_to_markdown(runtime_category_pct_df),
+            "",
         ]
     )
     if left_strace_top_df is not None:
@@ -927,6 +1411,60 @@ def build_pair_outputs(
                 f"**Top strace Syscalls: `{right_name}`**",
                 "",
                 dataframe_to_markdown(right_strace_top_df.set_index("syscall")),
+                "",
+            ]
+        )
+    if has_dataframe_data(node_runtime_df):
+        pair_markdown += "\n" + "\n".join(
+            [
+                "**Node Runtime Metrics Table**",
+                "",
+                dataframe_to_markdown(node_runtime_df),
+                "",
+            ]
+        )
+    if has_dataframe_data(node_runtime_mean_duration_df):
+        pair_markdown += "\n" + "\n".join(
+            [
+                "**Node Runtime Mean Duration Table**",
+                "",
+                dataframe_to_markdown(node_runtime_mean_duration_df),
+                "",
+            ]
+        )
+    if left_node_paths_df is not None:
+        pair_markdown += "\n" + "\n".join(
+            [
+                f"**Top Node FS Paths: `{left_name}`**",
+                "",
+                dataframe_to_markdown(left_node_paths_df.set_index("path")),
+                "",
+            ]
+        )
+    if right_node_paths_df is not None:
+        pair_markdown += "\n" + "\n".join(
+            [
+                f"**Top Node FS Paths: `{right_name}`**",
+                "",
+                dataframe_to_markdown(right_node_paths_df.set_index("path")),
+                "",
+            ]
+        )
+    if left_node_categories_df is not None:
+        pair_markdown += "\n" + "\n".join(
+            [
+                f"**Node FS Path Categories: `{left_name}`**",
+                "",
+                dataframe_to_markdown(left_node_categories_df.set_index("category")),
+                "",
+            ]
+        )
+    if right_node_categories_df is not None:
+        pair_markdown += "\n" + "\n".join(
+            [
+                f"**Node FS Path Categories: `{right_name}`**",
+                "",
+                dataframe_to_markdown(right_node_categories_df.set_index("category")),
                 "",
             ]
         )

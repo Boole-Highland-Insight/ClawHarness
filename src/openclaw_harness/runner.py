@@ -199,6 +199,8 @@ def build_preflight_payload(
             target = runtime_info.container_name or "container unavailable"
         elif collector.status.name in {"pidstat", "strace", "perf_stat", "perf_record"}:
             target = str(runtime_info.host_pid) if runtime_info.host_pid is not None else "host PID unavailable"
+        elif collector.status.name == "node_trace":
+            target = "runtime workspace"
         elif collector.status.name == "vmstat":
             target = "host system"
         collector_targets.append(
@@ -266,6 +268,7 @@ async def run_scenario(
     container_name = f"{scenario.runtime.container_name_base}-{slugify(scenario.name)}-{uuid4().hex[:8]}"
     runtime_manager = create_runtime_manager(
         config=scenario.runtime,
+        node_trace=scenario.collectors.node_trace,
         output_dir=run_dir,
         container_name=container_name,
         device_identity=device_identity,

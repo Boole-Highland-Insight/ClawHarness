@@ -13,7 +13,7 @@ from urllib.request import urlopen
 
 from .device_identity import DeviceIdentity
 from .parsers import derive_healthcheck_url
-from .scenario import RuntimeConfig
+from .scenario import NodeTraceConfig, RuntimeConfig
 from .utils import command_exists, compact_cmd, run_command
 
 
@@ -47,11 +47,13 @@ class DockerRuntimeManager:
         self,
         *,
         config: RuntimeConfig,
+        node_trace: NodeTraceConfig | None,
         output_dir: Path,
         container_name: str,
         device_identity: DeviceIdentity | None = None,
     ) -> None:
         self.config = config
+        self.node_trace = node_trace or NodeTraceConfig()
         self.output_dir = output_dir
         self.container_name = container_name
         self.device_identity = device_identity
@@ -96,6 +98,19 @@ class DockerRuntimeManager:
             "-v",
             f"{self.workspace_dir}:/home/node/.openclaw/workspace",
         ]
+        if self.node_trace.enabled:
+            categories = ",".join(self.node_trace.categories)
+            trace_pattern = "/home/node/.openclaw/workspace/node-trace-${pid}.json"
+            docker_args.extend(
+                [
+                    "-e",
+                    (
+                        "NODE_OPTIONS="
+                        f"--trace-event-categories={categories} "
+                        f"--trace-event-file-pattern={trace_pattern}"
+                    ),
+                ],
+            )
         if self.config.skip_channels:
             docker_args.extend(["-e", "OPENCLAW_SKIP_CHANNELS=1"])
         docker_args.extend(
@@ -560,6 +575,7 @@ class HostDirectRuntimeManager(BaseRuntimeManager):
 def create_runtime_manager(
     *,
     config: RuntimeConfig,
+    node_trace: NodeTraceConfig | None,
     output_dir: Path,
     container_name: str,
     device_identity: DeviceIdentity | None = None,
@@ -567,6 +583,7 @@ def create_runtime_manager(
     if config.kind == "docker":
         return DockerRuntimeManager(
             config=config,
+            node_trace=node_trace,
             output_dir=output_dir,
             container_name=container_name,
             device_identity=device_identity,

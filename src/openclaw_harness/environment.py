@@ -60,6 +60,7 @@ def probe_environment(*, scenario: ScenarioConfig, output_dir: Path) -> dict[str
                 "docker_stats": scenario.collectors.docker_stats.enabled,
                 "pidstat": scenario.collectors.pidstat.enabled,
                 "strace": scenario.collectors.strace.enabled,
+                "node_trace": scenario.collectors.node_trace.enabled,
                 "iostat": scenario.collectors.iostat.enabled,
                 "vmstat": scenario.collectors.vmstat.enabled,
                 "perf_stat": scenario.collectors.perf_stat.enabled,
@@ -176,6 +177,14 @@ def _build_recommended_collectors(
         "strace": {
             "enabled": False,
             "reason": "keep off by default; enable only for short syscall-level debugging runs",
+        },
+        "node_trace": {
+            "enabled": docker_enabled,
+            "reason": (
+                "recommended for docker runtimes when you need Node event-loop, async_hooks, and fs callback evidence"
+                if docker_enabled
+                else "not available for host_direct unless the target runtime is launched with trace-event flags"
+            ),
         },
         "iostat": {
             "enabled": True,

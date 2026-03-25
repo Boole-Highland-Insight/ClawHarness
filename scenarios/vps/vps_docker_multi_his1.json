@@ -1,0 +1,58 @@
+{
+  "name": "vps-docker-multi-task-his1-00-500-full",
+  "runtime": {
+    "kind": "docker",
+    "image": "openclaw:bench-local",
+    "container_name_base": "openclaw-bench-vps",
+    "host": "127.0.0.1",
+    "host_port": 19189,
+    "container_port": 18789,
+    "gateway_bind": "lan",
+    "gateway_token": "replace-with-vps-gateway-token",
+    "build_image_if_missing": true,
+    "force_rebuild": false,
+    "skip_channels": true,
+    "startup_timeout_sec": 240
+  },
+  "client": {
+    "role": "operator",
+    "message": "/history head 1",
+    "session_prefix": "vps-docker-multi-task-his1-00-500-full",
+    "session_mode": "per_worker",
+    "history_limit": 1,
+    "wait_timeout_ms": 15000,
+    "send_timeout_ms": 15000
+  },
+  "load": {
+    "concurrency": 20,
+    "requests_per_worker": 25,
+    "worker_stagger_ms": 150,
+    "request_pause_ms": 0
+  },
+  "collectors": {
+    "docker_stats": {
+      "enabled": true,
+      "interval_ms": 1000
+    },
+    "pidstat": {
+      "enabled": true,
+      "interval_sec": 1
+    },
+    "strace": {
+      "enabled": true
+    },
+    "iostat": {
+      "enabled": true,
+      "interval_sec": 1
+    },
+    "perf_stat": {
+      "enabled": true
+    },
+    "perf_record": {
+      "enabled": true
+    }
+  },
+  "artifacts": {
+    "summary_only": false
+  }
+}

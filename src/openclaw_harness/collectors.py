@@ -193,6 +193,19 @@ class BackgroundCommandCollector(BaseCollector):
         self.status.status = "completed"
 
 
+class PassiveArtifactCollector(BaseCollector):
+    def __init__(self, *, name: str, enabled: bool, disabled_detail: str | None = None) -> None:
+        super().__init__(name, enabled)
+        self.disabled_detail = disabled_detail
+
+    def start(self) -> None:
+        if not self.status.enabled:
+            self.status.status = "skipped"
+            self.status.detail = self.disabled_detail or "disabled in scenario"
+            return
+        self.status.status = "completed"
+
+
 def build_collectors(
     *,
     config: CollectorsConfig,
@@ -246,6 +259,12 @@ def build_collectors(
             ),
             output_path=strace_output,
             disabled_detail="host PID is unavailable" if host_pid is None else None,
+        ),
+    )
+    collectors.append(
+        PassiveArtifactCollector(
+            name="node_trace",
+            enabled=config.node_trace.enabled,
         ),
     )
     perf_stat_output = output_dir / "perf_stat.csv"
