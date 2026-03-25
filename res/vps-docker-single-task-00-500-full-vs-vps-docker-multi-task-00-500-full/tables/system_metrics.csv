@@ -1,3 +1,3 @@
 scenario,interrupts_per_s,system_context_switches_per_s,run_queue,perf_cache_misses,perf_context_switches,perf_cpu_migrations,perf_page_faults,perf_unsupported_events,strace_events_per_s_peak,strace_duration_ms_per_s_peak,strace_top_syscall,strace_top_syscall_total_duration_sec
-vps-docker-single-task-00-500-full,58063.62416107383,102702.65771812081,1.395973154362416,,36.83753020134228,40.9241677852349,7.302872483221476,"cache-misses, cache-references",4399.0,14339.846000000243,futex,1178.035728
-vps-docker-multi-task-00-500-full,59165.86666666667,104608.68148148149,1.4,,36.7655037037037,42.47065185185185,204.81302962962965,"cache-misses, cache-references",5499.0,14983.821000000251,futex,1063.719129
+vps-docker-single-task-00-500-full,84897.08662900189,158911.37288135593,1.3239171374764596,,87.59399058380414,20.116849340866292,34.55550094161959,"cache-misses, cache-references",3468.0,17977.78600000012,futex,4230.282737
+vps-docker-multi-task-00-500-full,85293.75939849624,159817.33458646617,1.3101503759398496,,89.60337781954888,23.77001879699248,238.88443045112783,"cache-misses, cache-references",3632.0,16909.61600000027,futex,4239.576375

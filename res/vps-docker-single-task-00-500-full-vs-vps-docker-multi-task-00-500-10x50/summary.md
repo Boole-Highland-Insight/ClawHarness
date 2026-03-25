@@ -21,7 +21,9 @@
 - ![Context Switch Timeline](figures/context_switch_timeline.png)
 - ![strace Timeline](figures/strace_timeline.png)
 - ![strace Mean Duration](figures/strace_mean_duration_ms.png)
+- ![Gateway Runtime Timeline](figures/gateway_runtime_timeline.png)
 - ![Node Focus Group Duration](figures/node_focus_group_duration_ms.png)
+- ![Node Focus Timeline](figures/node_focus_timeline.png)
 - ![Node Runtime Mean Duration](figures/node_runtime_mean_duration_ms.png)
 - ![Node Runtime Timeline](figures/node_runtime_timeline.png)
 - ![Runtime Category Samples](figures/runtime_category_pct.png)
@@ -112,10 +114,10 @@
 
 **Node Focus Groups Table**
 
-| scenario | sessions_lock_total_ms | sessions_lock_count | sessions_dir_total_ms | sessions_dir_count | bootstrap_files_total_ms | bootstrap_files_count |
-| --- | --- | --- | --- | --- | --- | --- |
-| vps-docker-single-task-00-500-full | 298.634 | 272.000 | 868.118 | 680.000 | 6459.129 | 884.000 |
-| vps-docker-multi-task-00-500-10x50 | 733.853 | 272.000 | 4405.994 | 680.000 | 8091.316 | 793.000 |
+| scenario | sessions_lock_total_ms | sessions_lock_count | sessions_dir_enum_total_ms | sessions_dir_enum_count | sessions_json_total_ms | sessions_json_count | sessions_tmp_total_ms | sessions_tmp_count | bootstrap_files_total_ms | bootstrap_files_count |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| vps-docker-single-task-00-500-full | 298.634 | 272.000 | 77.678 | 68.000 | 164.106 | 68.000 | 327.700 | 272.000 | 6459.129 | 884.000 |
+| vps-docker-multi-task-00-500-10x50 | 733.853 | 272.000 | 1781.805 | 68.000 | 210.497 | 68.000 | 1679.839 | 272.000 | 8091.316 | 793.000 |
 
 **Runtime Category Samples Table**
 

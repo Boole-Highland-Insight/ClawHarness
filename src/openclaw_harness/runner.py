@@ -44,6 +44,8 @@ async def execute_load(
     device_identity,
 ) -> list[dict[str, object]]:
     records: list[dict[str, object]] = []
+    max_parallel_connects = min(4, max(1, scenario.load.concurrency))
+    connect_gate = asyncio.Semaphore(max_parallel_connects)
 
     async def worker(worker_id: int) -> None:
         if scenario.load.worker_stagger_ms > 0:
@@ -57,7 +59,8 @@ async def execute_load(
         )
         connect_latency_ms = 0.0
         try:
-            connect_latency_ms = await client.connect()
+            async with connect_gate:
+                connect_latency_ms = await client.connect()
             for request_index in range(scenario.load.requests_per_worker):
                 session_key = resolve_session_key(
                     scenario=scenario,

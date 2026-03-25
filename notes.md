@@ -657,3 +657,52 @@
 如果你愿意，我下一步可以继续做两件最值钱的事之一：
 - 把 `embedded_run_span` 那些阶段日志也解析进 summary，直接算出 `bootstrap_load / skills / context_bundle / reply_dispatch queue` 各阶段 single vs multi 的时间。
 - 专门把 `sessions.json.lock`、`sessions/`、bootstrap 文件这几类路径单独出一张对比表，看看哪一类增长最明显。
+
+---
+
+已经继续拆了，最新报告里现在能单独看到：
+
+- `sessions.json.lock`
+- `sessions.json`
+- `sessions.json.<uuid>.tmp`
+- `sessions/` 目录本身的枚举/解析
+- `bootstrap files`
+
+表在 [summary.md](/root/client-harness/res/vps-docker-single-task-00-500-full-vs-vps-docker-multi-task-00-500-10x50/summary.md#L115)，timeline 图在 [node_focus_timeline.png](/root/client-harness/res/vps-docker-single-task-00-500-full-vs-vps-docker-multi-task-00-500-10x50/figures/node_focus_timeline.png)。这次我还把 `sessions_tmp` 接进了导出链路，代码在 [parsers.py](/root/client-harness/src/openclaw_harness/parsers.py) 和 [export_pair_report.py](/root/client-harness/scripts/export_pair_report.py)。
+
+从最新结果看，确实存在你说的那条 session 操作链，而且证据很强：
+
+- 查找 / 解析 session 目录：有大量 `realpath` 打在 `/home/node/.openclaw/agents/main/sessions` 上。single `77.678ms`，multi `1781.805ms`，见 [summary.md](/root/client-harness/res/vps-docker-single-task-00-500-full-vs-vps-docker-multi-task-00-500-10x50/summary.md#L117)。
+- 判断目录/文件是否存在：大量 `lstat`，尤其打在 `sessions.json.lock` 和 `sessions.json.<uuid>.tmp` 上。
+- 共享锁文件：`sessions.json.lock` 明显存在，而且 multi 更重，`298.634ms -> 733.853ms`。
+- 临时文件写入链：`sessions.json.<uuid>.tmp` 很明显，single `327.700ms`，multi `1679.839ms`。从 trace 样本能看到固定模式：
+  - `open tmp`
+  - `chmod tmp`
+  - `chmod sessions.json`
+  - `lstat tmp`
+  - `unlink sessions.json.lock`
+  见 [node_trace.parsed.csv](/root/client-harness/out/20260325T174736Z_vps-docker-multi-task-00-500-10x50/node_trace.parsed.csv)。
+- session 索引文件：`sessions.json` 也有固定访问，`164.106ms -> 210.497ms`。
+- session 目录下文件：运行时目录里确实是一组 session `.jsonl` 文件加一个 `sessions.json` 索引，见 [sessions dir](/root/client-harness/out/20260325T174736Z_vps-docker-multi-task-00-500-10x50/runtime/config/agents/main/sessions) 和 [sessions.json](/root/client-harness/out/20260325T174736Z_vps-docker-multi-task-00-500-10x50/runtime/config/agents/main/sessions/sessions.json)。
+
+所以现在更像是：
+
+- 有 session manager 级别的共享串行化
+- 至少包含 `sessions.json.lock` 这把锁
+- 并发下更重的不是 `sessions.json` 本身，而是：
+  - `sessions/` 目录 realpath/枚举
+  - `sessions.json.<tmp>` 临时文件写入链
+  - `sessions.json.lock` 锁文件访问
+
+这很像“更新全局 session 索引时要拿共享锁，然后走 tmp 文件落盘/替换”的模式，所以“session manager 有共享锁，排队”这个判断，我现在会说：**是，高概率有，而且已经有 trace 证据支持**。  
+但“读取或准备 history / transcript / metadata 文件”这一层，这批 Node trace 里还没有直接命中对应路径名；当前更明确看到的是 session 索引和 session `.jsonl` 所在目录这一层，而不是单独叫 `history/transcript/metadata` 的文件名。
+
+额外一个很关键的对照是 [Gateway Runtime Stage Table](/root/client-harness/res/vps-docker-single-task-00-500-full-vs-vps-docker-multi-task-00-500-10x50/summary.md#L108)：
+- `execution_admission_wait_mean_ms`: `0.143 -> 9.253`
+- `skills/context_bundle` 基本没变
+
+所以整体结论还是：
+- `multi` 慢，主因更像执行前 admission/queue wait
+- 这个排队和 session manager 的共享锁 + 目录/索引更新链路高度相关
+
+如果你要，我下一步可以继续把 `sessions.json.<uuid>.tmp` 和 `sessions.json.lock` 各自再画成单独双图，并把 session `.jsonl` 文件访问也单独归一类。

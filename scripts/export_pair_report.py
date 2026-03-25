@@ -338,13 +338,29 @@ def build_resource_profile_row(summary: dict[str, Any], run_dir: Path) -> dict[s
             node_trace,
             ["path_hotspots", "focus_groups", "sessions_lock", "count"],
         ),
-        "node_sessions_dir_total_ms": nested_get(
+        "node_sessions_dir_enum_total_ms": nested_get(
             node_trace,
-            ["path_hotspots", "focus_groups", "sessions_dir", "total_duration_ms"],
+            ["path_hotspots", "focus_groups", "sessions_dir_enum", "total_duration_ms"],
         ),
-        "node_sessions_dir_count": nested_get(
+        "node_sessions_dir_enum_count": nested_get(
             node_trace,
-            ["path_hotspots", "focus_groups", "sessions_dir", "count"],
+            ["path_hotspots", "focus_groups", "sessions_dir_enum", "count"],
+        ),
+        "node_sessions_json_total_ms": nested_get(
+            node_trace,
+            ["path_hotspots", "focus_groups", "sessions_json", "total_duration_ms"],
+        ),
+        "node_sessions_json_count": nested_get(
+            node_trace,
+            ["path_hotspots", "focus_groups", "sessions_json", "count"],
+        ),
+        "node_sessions_tmp_total_ms": nested_get(
+            node_trace,
+            ["path_hotspots", "focus_groups", "sessions_tmp", "total_duration_ms"],
+        ),
+        "node_sessions_tmp_count": nested_get(
+            node_trace,
+            ["path_hotspots", "focus_groups", "sessions_tmp", "count"],
         ),
         "node_bootstrap_files_total_ms": nested_get(
             node_trace,
@@ -667,8 +683,12 @@ def build_node_focus_groups_table(profile_df: pd.DataFrame) -> pd.DataFrame:
         [
             "node_sessions_lock_total_ms",
             "node_sessions_lock_count",
-            "node_sessions_dir_total_ms",
-            "node_sessions_dir_count",
+            "node_sessions_dir_enum_total_ms",
+            "node_sessions_dir_enum_count",
+            "node_sessions_json_total_ms",
+            "node_sessions_json_count",
+            "node_sessions_tmp_total_ms",
+            "node_sessions_tmp_count",
             "node_bootstrap_files_total_ms",
             "node_bootstrap_files_count",
         ]
@@ -676,8 +696,12 @@ def build_node_focus_groups_table(profile_df: pd.DataFrame) -> pd.DataFrame:
         columns={
             "node_sessions_lock_total_ms": "sessions_lock_total_ms",
             "node_sessions_lock_count": "sessions_lock_count",
-            "node_sessions_dir_total_ms": "sessions_dir_total_ms",
-            "node_sessions_dir_count": "sessions_dir_count",
+            "node_sessions_dir_enum_total_ms": "sessions_dir_enum_total_ms",
+            "node_sessions_dir_enum_count": "sessions_dir_enum_count",
+            "node_sessions_json_total_ms": "sessions_json_total_ms",
+            "node_sessions_json_count": "sessions_json_count",
+            "node_sessions_tmp_total_ms": "sessions_tmp_total_ms",
+            "node_sessions_tmp_count": "sessions_tmp_count",
             "node_bootstrap_files_total_ms": "bootstrap_files_total_ms",
             "node_bootstrap_files_count": "bootstrap_files_count",
         }
@@ -731,25 +755,45 @@ def plot_time_series_panels(
     for ax, spec in zip(axes, usable_specs):
         left_points = spec.get("left", [])
         right_points = spec.get("right", [])
+        render_mode = str(spec.get("render_mode", "line"))
         if left_points:
-            ax.plot(
-                [t for t, _ in left_points],
-                [v for _, v in left_points],
-                linewidth=1.4,
-                marker="o",
-                markersize=2.8,
-                label=label_a,
-            )
+            if render_mode == "scatter":
+                ax.scatter(
+                    [t for t, _ in left_points],
+                    [v for _, v in left_points],
+                    s=10,
+                    alpha=0.65,
+                    label=label_a,
+                )
+            else:
+                ax.plot(
+                    [t for t, _ in left_points],
+                    [v for _, v in left_points],
+                    linewidth=1.4,
+                    marker="o",
+                    markersize=2.8,
+                    label=label_a,
+                )
         if right_points:
-            ax.plot(
-                [t for t, _ in right_points],
-                [v for _, v in right_points],
-                linewidth=1.4,
-                marker="o",
-                markersize=2.8,
-                linestyle="--",
-                label=label_b,
-            )
+            if render_mode == "scatter":
+                ax.scatter(
+                    [t for t, _ in right_points],
+                    [v for _, v in right_points],
+                    s=10,
+                    alpha=0.65,
+                    marker="x",
+                    label=label_b,
+                )
+            else:
+                ax.plot(
+                    [t for t, _ in right_points],
+                    [v for _, v in right_points],
+                    linewidth=1.4,
+                    marker="o",
+                    markersize=2.8,
+                    linestyle="--",
+                    label=label_b,
+                )
         ax.set_ylabel(str(spec.get("ylabel", "")))
         ax.set_title(str(spec.get("subtitle", "")))
         ax.grid(True, alpha=0.25)
@@ -901,11 +945,19 @@ def build_pair_outputs(
     if has_dataframe_data(node_runtime_mean_duration_df):
         save_dataframe(node_runtime_mean_duration_df, pair_dir / "tables" / "node_runtime_mean_duration_ms.csv")
     node_focus_groups_duration_df = node_focus_groups_df[
-        ["sessions_lock_total_ms", "sessions_dir_total_ms", "bootstrap_files_total_ms"]
+        [
+            "sessions_lock_total_ms",
+            "sessions_dir_enum_total_ms",
+            "sessions_json_total_ms",
+            "sessions_tmp_total_ms",
+            "bootstrap_files_total_ms",
+        ]
     ].rename(
         columns={
             "sessions_lock_total_ms": "sessions_lock",
-            "sessions_dir_total_ms": "sessions_dir",
+            "sessions_dir_enum_total_ms": "sessions_dir_enum",
+            "sessions_json_total_ms": "sessions_json",
+            "sessions_tmp_total_ms": "sessions_tmp",
             "bootstrap_files_total_ms": "bootstrap_files",
         }
     ).T
@@ -1274,6 +1326,47 @@ def build_pair_outputs(
         plot_time_series_panels(
             panel_specs=[
                 {
+                    "subtitle": "Execution Admission Wait",
+                    "ylabel": "ms",
+                    "left": time_series_points(left_summary, ["collector_analysis", "gateway_runtime_spans", "time_series", "execution_admission_wait_ms"]),
+                    "right": time_series_points(right_summary, ["collector_analysis", "gateway_runtime_spans", "time_series", "execution_admission_wait_ms"]),
+                },
+                {
+                    "subtitle": "Bootstrap Load Duration",
+                    "ylabel": "ms",
+                    "render_mode": "scatter",
+                    "left": time_series_points(left_summary, ["collector_analysis", "gateway_runtime_spans", "time_series", "bootstrap_load_duration_ms"]),
+                    "right": time_series_points(right_summary, ["collector_analysis", "gateway_runtime_spans", "time_series", "bootstrap_load_duration_ms"]),
+                },
+                {
+                    "subtitle": "Skills Duration",
+                    "ylabel": "ms",
+                    "render_mode": "scatter",
+                    "left": time_series_points(left_summary, ["collector_analysis", "gateway_runtime_spans", "time_series", "skills_duration_ms"]),
+                    "right": time_series_points(right_summary, ["collector_analysis", "gateway_runtime_spans", "time_series", "skills_duration_ms"]),
+                },
+                {
+                    "subtitle": "Context Bundle Duration",
+                    "ylabel": "ms",
+                    "render_mode": "scatter",
+                    "left": time_series_points(left_summary, ["collector_analysis", "gateway_runtime_spans", "time_series", "context_bundle_duration_ms"]),
+                    "right": time_series_points(right_summary, ["collector_analysis", "gateway_runtime_spans", "time_series", "context_bundle_duration_ms"]),
+                },
+                {
+                    "subtitle": "Reply Dispatch Queue Wait",
+                    "ylabel": "ms",
+                    "left": time_series_points(left_summary, ["collector_analysis", "gateway_runtime_spans", "time_series", "reply_dispatch_queue_wait_ms"]),
+                    "right": time_series_points(right_summary, ["collector_analysis", "gateway_runtime_spans", "time_series", "reply_dispatch_queue_wait_ms"]),
+                },
+            ],
+            label_a=left_name,
+            label_b=right_name,
+            title="Gateway Runtime Timeline",
+            output_path=pair_dir / "figures" / "gateway_runtime_timeline.png",
+        )
+        plot_time_series_panels(
+            panel_specs=[
+                {
                     "subtitle": "FS Async Duration per Second",
                     "ylabel": "ms/sec",
                     "left": time_series_points(left_summary, ["collector_analysis", "node_trace", "time_series", "fs_async_duration_ms_per_s"]),
@@ -1303,6 +1396,44 @@ def build_pair_outputs(
             title="Node Runtime Timeline",
             output_path=pair_dir / "figures" / "node_runtime_timeline.png",
         )
+        plot_time_series_panels(
+            panel_specs=[
+                {
+                    "subtitle": "sessions.json.lock Duration per Second",
+                    "ylabel": "ms/sec",
+                    "left": time_series_points(left_summary, ["collector_analysis", "node_trace", "time_series", "sessions_lock_duration_ms_per_s"]),
+                    "right": time_series_points(right_summary, ["collector_analysis", "node_trace", "time_series", "sessions_lock_duration_ms_per_s"]),
+                },
+                {
+                    "subtitle": "sessions.json Duration per Second",
+                    "ylabel": "ms/sec",
+                    "left": time_series_points(left_summary, ["collector_analysis", "node_trace", "time_series", "sessions_json_duration_ms_per_s"]),
+                    "right": time_series_points(right_summary, ["collector_analysis", "node_trace", "time_series", "sessions_json_duration_ms_per_s"]),
+                },
+                {
+                    "subtitle": "sessions/ Directory Duration per Second",
+                    "ylabel": "ms/sec",
+                    "left": time_series_points(left_summary, ["collector_analysis", "node_trace", "time_series", "sessions_dir_enum_duration_ms_per_s"]),
+                    "right": time_series_points(right_summary, ["collector_analysis", "node_trace", "time_series", "sessions_dir_enum_duration_ms_per_s"]),
+                },
+                {
+                    "subtitle": "sessions.json.<tmp> Duration per Second",
+                    "ylabel": "ms/sec",
+                    "left": time_series_points(left_summary, ["collector_analysis", "node_trace", "time_series", "sessions_tmp_duration_ms_per_s"]),
+                    "right": time_series_points(right_summary, ["collector_analysis", "node_trace", "time_series", "sessions_tmp_duration_ms_per_s"]),
+                },
+                {
+                    "subtitle": "Bootstrap Files Duration per Second",
+                    "ylabel": "ms/sec",
+                    "left": time_series_points(left_summary, ["collector_analysis", "node_trace", "time_series", "bootstrap_files_duration_ms_per_s"]),
+                    "right": time_series_points(right_summary, ["collector_analysis", "node_trace", "time_series", "bootstrap_files_duration_ms_per_s"]),
+                },
+            ],
+            label_a=left_name,
+            label_b=right_name,
+            title="Node Focus Timeline",
+            output_path=pair_dir / "figures" / "node_focus_timeline.png",
+        )
 
     figure_paths = [
         ("Latency Overview", pair_dir / "figures" / "latency_overview.png"),
@@ -1317,7 +1448,9 @@ def build_pair_outputs(
         ("Context Switch Timeline", pair_dir / "figures" / "context_switch_timeline.png"),
         ("strace Timeline", pair_dir / "figures" / "strace_timeline.png"),
         ("strace Mean Duration", pair_dir / "figures" / "strace_mean_duration_ms.png"),
+        ("Gateway Runtime Timeline", pair_dir / "figures" / "gateway_runtime_timeline.png"),
         ("Node Focus Group Duration", pair_dir / "figures" / "node_focus_group_duration_ms.png"),
+        ("Node Focus Timeline", pair_dir / "figures" / "node_focus_timeline.png"),
         ("Node Runtime Mean Duration", pair_dir / "figures" / "node_runtime_mean_duration_ms.png"),
         ("Node Runtime Timeline", pair_dir / "figures" / "node_runtime_timeline.png"),
         ("Runtime Category Samples", pair_dir / "figures" / "runtime_category_pct.png"),

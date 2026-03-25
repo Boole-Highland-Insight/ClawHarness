@@ -1,3 +1,3 @@
 scenario,total_mean,total_p50,total_p95,total_p99
-vps-docker-single-task-00-500-full,297.010668,272.935,384.514,403.824
-vps-docker-multi-task-00-500-full,4998.715472,5094.946,6584.162,7365.107
+vps-docker-single-task-00-500-full,1061.1226000000001,1190.892,1336.504,1410.841
+vps-docker-multi-task-00-500-full,19700.302197999998,20453.934,22529.98,29077.45

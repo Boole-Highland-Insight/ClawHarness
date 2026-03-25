@@ -771,10 +771,18 @@ def parse_node_trace_files(paths: list[Path], *, output_dir: Path) -> ParsedArti
         "promise_callback": {"events_per_s": {}, "duration_ms_per_s": {}},
         "event_loop": {"events_per_s": {}, "duration_ms_per_s": {}},
     }
+    focus_group_buckets = {
+        "sessions_lock": {},
+        "sessions_dir_enum": {},
+        "sessions_json": {},
+        "sessions_tmp": {},
+        "bootstrap_files": {},
+    }
 
     for event in completed_events:
         t_sec = (float(event["ts_us"]) - base_ts_us) / 1_000_000.0
         duration_ms = float(event["duration_us"]) / 1000.0
+        bucket = int(math.floor(t_sec))
         row = {
             "t_sec": t_sec,
             "pid": event.get("pid"),
@@ -788,7 +796,6 @@ def parse_node_trace_files(paths: list[Path], *, output_dir: Path) -> ParsedArti
         }
         rows.append(row)
 
-        bucket = int(math.floor(t_sec))
         group = _node_trace_runtime_group(event)
         if group:
             runtime_groups[group]["events_per_s"][bucket] = runtime_groups[group]["events_per_s"].get(bucket, 0.0) + 1.0
@@ -806,6 +813,8 @@ def parse_node_trace_files(paths: list[Path], *, output_dir: Path) -> ParsedArti
                 category = _classify_trace_path(path)
                 category_count[category] = category_count.get(category, 0) + 1
                 category_duration_ms[category] = category_duration_ms.get(category, 0.0) + duration_ms
+                for focus_group in _node_trace_focus_group_names(path):
+                    focus_group_buckets[focus_group][bucket] = focus_group_buckets[focus_group].get(bucket, 0.0) + duration_ms
 
     parsed_path = output_dir / "node_trace.parsed.csv"
     _write_csv(parsed_path, rows)
@@ -914,6 +923,31 @@ def parse_node_trace_files(paths: list[Path], *, output_dir: Path) -> ParsedArti
                 unit="ms/sec",
                 source_field="sum(CheckImmediate/RunAndClearNativeImmediates/RunTimers duration_ms)",
             ),
+            "sessions_lock_duration_ms_per_s": _bucket_time_series_entry(
+                bucket_values=focus_group_buckets["sessions_lock"],
+                unit="ms/sec",
+                source_field="sum(duration_ms where path endswith sessions.json.lock)",
+            ),
+            "sessions_dir_enum_duration_ms_per_s": _bucket_time_series_entry(
+                bucket_values=focus_group_buckets["sessions_dir_enum"],
+                unit="ms/sec",
+                source_field="sum(duration_ms where path == /home/node/.openclaw/agents/main/sessions)",
+            ),
+            "sessions_json_duration_ms_per_s": _bucket_time_series_entry(
+                bucket_values=focus_group_buckets["sessions_json"],
+                unit="ms/sec",
+                source_field="sum(duration_ms where path endswith sessions.json)",
+            ),
+            "sessions_tmp_duration_ms_per_s": _bucket_time_series_entry(
+                bucket_values=focus_group_buckets["sessions_tmp"],
+                unit="ms/sec",
+                source_field="sum(duration_ms where path matches sessions.json.<uuid>.tmp)",
+            ),
+            "bootstrap_files_duration_ms_per_s": _bucket_time_series_entry(
+                bucket_values=focus_group_buckets["bootstrap_files"],
+                unit="ms/sec",
+                source_field="sum(duration_ms for bootstrap files)",
+            ),
         },
     }
     summary_path = output_dir / "node_trace.summary.json"
@@ -967,6 +1001,7 @@ def parse_gateway_runtime_log(path: Path, *, output_dir: Path) -> ParsedArtifact
     _write_csv(parsed_path, rows)
 
     embedded_phase_values: dict[str, list[float]] = {}
+    embedded_phase_points: dict[str, list[dict[str, float]]] = {}
     embedded_by_run_phase: dict[str, dict[str, dict[str, Any]]] = {}
     wait_start_by_run: dict[str, float] = {}
     for event in events:
@@ -976,9 +1011,14 @@ def parse_gateway_runtime_log(path: Path, *, output_dir: Path) -> ParsedArtifact
         if event_name == "embedded_run_span":
             if run_id and phase:
                 embedded_by_run_phase.setdefault(run_id, {})[phase] = event
+            ts = event.get("ts")
             duration_ms = event.get("durationMs")
             if phase and isinstance(duration_ms, (int, float)):
                 embedded_phase_values.setdefault(phase, []).append(float(duration_ms))
+                if isinstance(ts, (int, float)):
+                    embedded_phase_points.setdefault(phase, []).append(
+                        {"ts_ms": float(ts), "value": float(duration_ms)}
+                    )
         elif event_name == "agent_wait_span" and phase == "wait_start" and run_id:
             ts = event.get("ts")
             if isinstance(ts, (int, float)):
@@ -998,6 +1038,7 @@ def parse_gateway_runtime_log(path: Path, *, output_dir: Path) -> ParsedArtifact
     queue_wait_ms: list[float] = []
     queue_hold_ms: list[float] = []
     queue_pending_at_enter: list[float] = []
+    queue_wait_points: list[dict[str, float]] = []
     for phases in reply_dispatch_by_run.values():
         queue_enter = phases.get("queue_enter")
         queue_acquired = phases.get("queue_acquired")
@@ -1007,11 +1048,14 @@ def parse_gateway_runtime_log(path: Path, *, output_dir: Path) -> ParsedArtifact
             if isinstance(pending, (int, float)):
                 queue_pending_at_enter.append(float(pending))
         if isinstance(queue_enter, dict) and isinstance(queue_acquired, dict):
-            queue_wait_ms.append((float(queue_acquired["ts"]) - float(queue_enter["ts"])) / 1000.0)
+            wait_ms = (float(queue_acquired["ts"]) - float(queue_enter["ts"])) / 1000.0
+            queue_wait_ms.append(wait_ms)
+            queue_wait_points.append({"ts_ms": float(queue_enter["ts"]), "value": wait_ms})
         if isinstance(queue_acquired, dict) and isinstance(queue_idle, dict):
             queue_hold_ms.append((float(queue_idle["ts"]) - float(queue_acquired["ts"])) / 1000.0)
 
     execution_admission_wait_ms: list[float] = []
+    execution_admission_points: list[dict[str, float]] = []
     for run_id, wait_start_ts in wait_start_by_run.items():
         reply_start = embedded_by_run_phase.get(run_id, {}).get("reply_start")
         if not isinstance(reply_start, dict):
@@ -1019,7 +1063,9 @@ def parse_gateway_runtime_log(path: Path, *, output_dir: Path) -> ParsedArtifact
         ts = reply_start.get("ts")
         if not isinstance(ts, (int, float)):
             continue
-        execution_admission_wait_ms.append((float(ts) - float(wait_start_ts)) / 1000.0)
+        wait_ms = (float(ts) - float(wait_start_ts)) / 1000.0
+        execution_admission_wait_ms.append(wait_ms)
+        execution_admission_points.append({"ts_ms": float(wait_start_ts), "value": wait_ms})
 
     key_metrics = {
         "bootstrap_load": _summarize_present_numeric(embedded_phase_values.get("bootstrap_load_end", [])),
@@ -1050,6 +1096,33 @@ def parse_gateway_runtime_log(path: Path, *, output_dir: Path) -> ParsedArtifact
                 source_field=key,
             )
             for key, value in key_metrics.items()
+        },
+        "time_series": {
+            "bootstrap_load_duration_ms": _gateway_points_time_series_entry(
+                points=embedded_phase_points.get("bootstrap_load_end", []),
+                unit="ms",
+                source_field="embedded_run_span.bootstrap_load_end.durationMs",
+            ),
+            "skills_duration_ms": _gateway_points_time_series_entry(
+                points=embedded_phase_points.get("context_bundle_skills_end", []),
+                unit="ms",
+                source_field="embedded_run_span.context_bundle_skills_end.durationMs",
+            ),
+            "context_bundle_duration_ms": _gateway_points_time_series_entry(
+                points=embedded_phase_points.get("context_bundle_end", []),
+                unit="ms",
+                source_field="embedded_run_span.context_bundle_end.durationMs",
+            ),
+            "execution_admission_wait_ms": _gateway_points_time_series_entry(
+                points=execution_admission_points,
+                unit="ms",
+                source_field="embedded_run_span.reply_start.ts - agent_wait_span.wait_start.ts",
+            ),
+            "reply_dispatch_queue_wait_ms": _gateway_points_time_series_entry(
+                points=queue_wait_points,
+                unit="ms",
+                source_field="reply_dispatch_span.queue_acquired.ts - reply_dispatch_span.queue_enter.ts",
+            ),
         },
     }
     summary_path = output_dir / "gateway_runtime_spans.summary.json"
@@ -1935,9 +2008,12 @@ def _node_trace_focus_groups(
 ) -> dict[str, dict[str, float]]:
     groups = {
         "sessions_lock": {"count": 0.0, "total_duration_ms": 0.0},
-        "sessions_dir": {"count": 0.0, "total_duration_ms": 0.0},
+        "sessions_dir_enum": {"count": 0.0, "total_duration_ms": 0.0},
+        "sessions_json": {"count": 0.0, "total_duration_ms": 0.0},
+        "sessions_tmp": {"count": 0.0, "total_duration_ms": 0.0},
         "bootstrap_files": {"count": 0.0, "total_duration_ms": 0.0},
     }
+    sessions_dir_path = "/home/node/.openclaw/agents/main/sessions"
     bootstrap_suffixes = {
         "/AGENTS.md",
         "/SOUL.md",
@@ -1952,12 +2028,43 @@ def _node_trace_focus_groups(
         if path.endswith("/sessions.json.lock"):
             groups["sessions_lock"]["count"] += float(count)
             groups["sessions_lock"]["total_duration_ms"] += duration_ms
-        if "/agents/main/sessions" in path:
-            groups["sessions_dir"]["count"] += float(count)
-            groups["sessions_dir"]["total_duration_ms"] += duration_ms
+        if path.endswith("/sessions.json"):
+            groups["sessions_json"]["count"] += float(count)
+            groups["sessions_json"]["total_duration_ms"] += duration_ms
+        if re.search(r"/sessions\.json\.[^/]+\.tmp$", path):
+            groups["sessions_tmp"]["count"] += float(count)
+            groups["sessions_tmp"]["total_duration_ms"] += duration_ms
+        if path == sessions_dir_path:
+            groups["sessions_dir_enum"]["count"] += float(count)
+            groups["sessions_dir_enum"]["total_duration_ms"] += duration_ms
         if any(path.endswith(suffix) for suffix in bootstrap_suffixes):
             groups["bootstrap_files"]["count"] += float(count)
             groups["bootstrap_files"]["total_duration_ms"] += duration_ms
+    return groups
+
+
+def _node_trace_focus_group_names(path: str) -> list[str]:
+    groups: list[str] = []
+    sessions_dir_path = "/home/node/.openclaw/agents/main/sessions"
+    bootstrap_suffixes = {
+        "/AGENTS.md",
+        "/SOUL.md",
+        "/TOOLS.md",
+        "/IDENTITY.md",
+        "/USER.md",
+        "/HEARTBEAT.md",
+        "/BOOTSTRAP.md",
+    }
+    if path.endswith("/sessions.json.lock"):
+        groups.append("sessions_lock")
+    if path.endswith("/sessions.json"):
+        groups.append("sessions_json")
+    if re.search(r"/sessions\.json\.[^/]+\.tmp$", path):
+        groups.append("sessions_tmp")
+    if path == sessions_dir_path:
+        groups.append("sessions_dir_enum")
+    if any(path.endswith(suffix) for suffix in bootstrap_suffixes):
+        groups.append("bootstrap_files")
     return groups
 
 
@@ -1967,6 +2074,46 @@ def _row_matches_name(row: dict[str, Any], predicate: Any) -> bool:
         return bool(predicate(name))
     except Exception:
         return False
+
+
+def _gateway_phase_time_series_entry(
+    *,
+    events: dict[str, dict[str, dict[str, Any]]],
+    phase: str,
+    unit: str,
+    source_field: str,
+) -> dict[str, Any]:
+    points: list[dict[str, float]] = []
+    base_ts_ms: float | None = None
+    for phases in events.values():
+        record = phases.get(phase)
+        if not isinstance(record, dict):
+            continue
+        ts = record.get("ts")
+        duration_ms = record.get("durationMs")
+        if not isinstance(ts, (int, float)) or not isinstance(duration_ms, (int, float)):
+            continue
+        if base_ts_ms is None:
+            base_ts_ms = float(ts)
+        points.append({"t_sec": (float(ts) - base_ts_ms) / 1000.0, "value": float(duration_ms)})
+    points.sort(key=lambda item: item["t_sec"])
+    return _time_series_entry(points=points, unit=unit, source_field=source_field)
+
+
+def _gateway_points_time_series_entry(
+    *,
+    points: list[dict[str, float]],
+    unit: str,
+    source_field: str,
+) -> dict[str, Any]:
+    if not points:
+        return _time_series_entry(points=[], unit=unit, source_field=source_field)
+    base_ts_ms = min(float(point["ts_ms"]) for point in points)
+    normalized = [
+        {"t_sec": (float(point["ts_ms"]) - base_ts_ms) / 1000.0, "value": float(point["value"])}
+        for point in sorted(points, key=lambda item: item["ts_ms"])
+    ]
+    return _time_series_entry(points=normalized, unit=unit, source_field=source_field)
 
 
 def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
