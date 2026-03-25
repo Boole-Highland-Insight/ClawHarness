@@ -22,6 +22,7 @@ def probe_environment(*, scenario: ScenarioConfig, output_dir: Path) -> dict[str
     tools = {
         "docker": _probe_tool("docker", None),
         "pidstat": _probe_tool("pidstat", ["pidstat", "-V"]),
+        "strace": _probe_tool("strace", ["strace", "-V"]),
         "iostat": _probe_tool("iostat", ["iostat", "-V"]),
         "vmstat": _probe_tool("vmstat", ["vmstat", "-V"]),
         "perf": _probe_tool("perf", ["perf", "--version"]),
@@ -58,6 +59,7 @@ def probe_environment(*, scenario: ScenarioConfig, output_dir: Path) -> dict[str
             "configured_collectors": {
                 "docker_stats": scenario.collectors.docker_stats.enabled,
                 "pidstat": scenario.collectors.pidstat.enabled,
+                "strace": scenario.collectors.strace.enabled,
                 "iostat": scenario.collectors.iostat.enabled,
                 "vmstat": scenario.collectors.vmstat.enabled,
                 "perf_stat": scenario.collectors.perf_stat.enabled,
@@ -110,6 +112,11 @@ def _build_install_hints(
         hints["pidstat"] = {
             "package": "sysstat",
             "command": "sudo apt update && sudo apt install -y sysstat",
+        }
+        hints["strace"] = {
+            "package": "strace",
+            "command": "sudo apt update && sudo apt install -y strace",
+            "note": "Enable only for short, targeted syscall debugging runs.",
         }
         hints["iostat"] = {
             "package": "sysstat",
@@ -166,6 +173,10 @@ def _build_recommended_collectors(
             "enabled": True,
             "reason": pidstat_reason,
         },
+        "strace": {
+            "enabled": False,
+            "reason": "keep off by default; enable only for short syscall-level debugging runs",
+        },
         "iostat": {
             "enabled": True,
             "reason": "recommended when you want disk await, queue depth, and %util evidence",
@@ -191,6 +202,8 @@ def _build_notes(*, is_wsl: bool, tools: dict[str, dict[str, Any]]) -> list[str]
         notes.append("WSL detected: use latency, docker stats, and pidstat locally; prefer VPS for perf-based CPU conclusions.")
     if not tools["pidstat"]["usable"]:
         notes.append(tools["pidstat"]["detail"] or "pidstat is not usable on this host.")
+    if not tools["strace"]["usable"]:
+        notes.append(tools["strace"]["detail"] or "strace is not usable on this host.")
     if not tools["iostat"]["usable"]:
         notes.append(tools["iostat"]["detail"] or "iostat is not usable on this host.")
     if not tools["vmstat"]["usable"]:

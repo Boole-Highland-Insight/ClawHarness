@@ -370,9 +370,9 @@ Docker 容器维度的资源使用情况。
 | 观测手段 | 观测层级 | 典型字段 | 最适合回答的问题 |
 |---|---|---|---|
 | `latency_ms` / `latency.csv` | 请求级 | `send_latency_ms` `wait_latency_ms` `history_latency_ms` `total_latency_ms` | 慢在哪个 phase，单 worker / 多 worker 哪个阶段被放大 |
-| `docker_stats` | 容器级 | `cpu_percent_value` `mem_percent_value` `mem_usage_bytes` `net_rx_bytes` `net_tx_bytes` `block_read_bytes` `block_write_bytes` `pids_value` | 整个容器 CPU / 内存 / 网络 / block IO 是否在并发下升高 |
+| `docker_stats` | 容器级 | `cpu_percent_value` `mem_percent_value` `mem_usage_bytes` `net_rx_bytes_per_s` `net_tx_bytes_per_s` `block_read_bytes_per_s` `block_write_bytes_per_s` `pids_value` | 整个容器 CPU / 内存 / 网络 / block IO 是否在并发下升高 |
 | `pidstat` | 进程级 | `pct_cpu` `pct_wait` `rss_kib` `pct_mem` `kb_rd_per_s` `kb_wr_per_s` `iodelay` | gateway 进程本身是不是 CPU / 内存 / IO 在忙，`wait` 升高时进程级 IO 是否也在升高 |
-| `iostat` | 宿主机磁盘设备级 | `r_s` `w_s` `rkb_s` `wkb_s` `r_await` `w_await` `aqu_sz` `pct_util` | 底层磁盘是否在卡，`await` / `%util` / 队列长度是否在多 worker 下明显变高 |
+| `iostat` | 宿主机磁盘设备级 | `r_s` `w_s` `rkb_s` `wkb_s` `r_await` `w_await` `f_await` `aqu_sz` `pct_util` | 底层磁盘是否在卡，读/写/flush 等待和 `%util` / 队列长度是否在多 worker 下明显变高 |
 | `perf_stat` | CPU 计数器级 | `counter_value` `runtime_ms` `running_pct` `metric_value` | 更正式的 CPU 计数器分析，适合 VPS 上做 CPU 瓶颈归因 |
 | `perf_record` | 调用栈 / 热点级 | `perf.data` | 哪些函数真正耗 CPU，适合后续 flame graph / hotspot 分析 |
 
@@ -397,11 +397,14 @@ Docker 容器维度的资源使用情况。
 - `metrics.mem_percent_value`
 - `metrics.mem_usage_bytes`
 - `metrics.mem_limit_bytes`
-- `metrics.net_rx_bytes`
-- `metrics.net_tx_bytes`
-- `metrics.block_read_bytes`
-- `metrics.block_write_bytes`
+- `metrics.net_rx_bytes_per_s`
+- `metrics.net_tx_bytes_per_s`
+- `metrics.block_read_bytes_per_s`
+- `metrics.block_write_bytes_per_s`
 - `metrics.pids_value`
+- `metric_summaries.<metric>.summary`
+- `metric_summaries.<metric>.unit`
+- `metric_summaries.<metric>.source_field`
 
 每个 `metrics.*` 下都会有：
 
@@ -450,13 +453,24 @@ Docker 容器维度的资源使用情况。
 - `150` = 大约 1.5 个核
 - `400` = 大约四个核
 
+另外，`net_*_bytes_per_s` 和 `block_*_bytes_per_s` 现在是按相邻采样点差分后算出来的速率：
+
+- 不是 `docker stats` 原始累计计数器的直接均值
+- `source_field` 会显示成 `delta(...)/elapsed_sec`
+- 如果采样点之间没有合法时间差，那个点会留空，不会硬算
+
 ### `collector_analysis.pidstat`
 
 这是进程级摘要，典型结构是：
 
 - `sections.cpu.metrics`
+- `sections.cpu.metric_summaries`
 - `sections.memory.metrics`
+- `sections.memory.metric_summaries`
 - `sections.io.metrics`
+- `sections.io.metric_summaries`
+- `sections.context_switch.metrics`
+- `sections.context_switch.metric_summaries`
 
 重点字段通常包括：
 
@@ -481,6 +495,9 @@ Docker 容器维度的资源使用情况。
 
 - `busiest_device_by_util_mean`
 - `devices.<device>.metrics`
+- `devices.<device>.metric_summaries`
+- `key_metrics`
+- `key_metric_summaries`
 
 重点字段通常包括：
 
@@ -490,13 +507,57 @@ Docker 容器维度的资源使用情况。
 - `wkb_s`
 - `r_await`
 - `w_await`
+- `f_await`
 - `aqu_sz`
 - `pct_util`
+
+这里的 `key_metrics` / `key_metric_summaries` 默认就是针对 `busiest_device_by_util_mean` 那块盘整理出来的快捷入口，所以做 pair 对比时不需要每次先手动展开 `devices.<device>`。
+
+### `collector_analysis.vmstat`
+
+这是宿主机整体调度级摘要，典型结构是：
+
+- `metrics`
+- `metric_summaries`
+- `key_metrics`
+- `key_metric_summaries`
+
+最常看的快捷字段通常是：
+
+- `key_metrics.interrupts_per_s`
+- `key_metrics.context_switches_per_s`
+- `key_metrics.run_queue`
+- `key_metrics.blocked_processes`
+
+### `collector_analysis.perf_stat`
+
+这是 `perf stat` 的解析摘要，典型结构是：
+
+- `metrics.<event>`
+- `metric_summaries.<event>`
+- `events[]`
+- `key_metrics.context_switches`
+- `key_metrics.cpu_migrations`
+- `key_metrics.page_faults`
+- `key_metric_summaries.<metric>`
+- `unsupported_events`
+
+这里要特别注意两点：
+
+- 汇总现在只使用 `metric_value`
+- `counter_value` 只保留在 `events[]` 里做原始记录，不再参与 summary 计算
+
+所以像 `context-switches` 这种事件，summary 反映的是 `/sec` 或 `K/sec` 这一类真正的 metric value，而不是原始 counter 列里的 `0/1/...`。
+
+如果某个事件在原始输出里是 `<not supported>` 或没有 `metric_value`：
+
+- `metric_summaries.<event>.summary` 会是空对象 `{}`
+- 不会再伪装成 `0`
 
 这也是最适合回答下面几个问题的一层数据：
 
 - 当前慢是不是磁盘 / overlay2 / docker 存储层在卡
-- `wait` 变高时，底层磁盘是不是也在高 `await`
+- `wait` 变高时，底层磁盘是不是也在高 `r_await` / `w_await` / `f_await`
 - 多 worker 时 `%util`、队列长度、写入速率是不是明显上升
 
 ## 实战解读顺序
@@ -505,14 +566,14 @@ Docker 容器维度的资源使用情况。
 
 1. 先看 `latency_ms.total` 和 `latency_ms.wait`
 2. 再看 `collector_analysis.pidstat.sections.io`
-3. 再看 `collector_analysis.docker_stats.metrics.block_write_bytes`
+3. 再看 `collector_analysis.docker_stats.metrics.block_write_bytes_per_s`
 4. 最后看 `collector_analysis.iostat.devices.<busiest_device>.metrics`
 
 如果你看到下面这种组合：
 
 - `wait.mean` 升高
 - `pidstat.kb_wr_per_s` 升高
-- `docker_stats.block_write_bytes` 升高
+- `docker_stats.block_write_bytes_per_s` 升高
 - `iostat.w_await` / `aqu_sz` / `pct_util` 也升高
 
 那就很像是：
@@ -522,7 +583,7 @@ Docker 容器维度的资源使用情况。
 如果你看到的是：
 
 - `wait.mean` 升高
-- 但 `iostat.await` 和 `%util` 都不高
+- 但 `iostat.r_await` / `iostat.w_await` / `iostat.f_await` 和 `%util` 都不高
 - `pidstat.pct_cpu` 却明显升高
 
 那更像是：
@@ -550,4 +611,5 @@ Docker 容器维度的资源使用情况。
 - `pidstat.context_switch.cswch_per_s`
 - `perf_stat.context_switches`
 - `iostat.w_await`
+- `iostat.f_await`
 - `latency_ms.wait`

@@ -187,7 +187,7 @@ def build_preflight_payload(
                 "detail": (
                     f"{runtime_info.host_pid} ({runtime_info.host_pid_source or 'configured'})"
                     if runtime_info.host_pid is not None
-                    else "host PID auto-discovery failed; pidstat/perf host collectors will be skipped unless runtime.host_pid is set"
+                    else "host PID auto-discovery failed; pidstat/strace/perf host collectors will be skipped unless runtime.host_pid is set"
                 ),
             },
         )
@@ -197,7 +197,7 @@ def build_preflight_payload(
         target = "none"
         if collector.status.name == "docker_stats":
             target = runtime_info.container_name or "container unavailable"
-        elif collector.status.name in {"pidstat", "perf_stat", "perf_record"}:
+        elif collector.status.name in {"pidstat", "strace", "perf_stat", "perf_record"}:
             target = str(runtime_info.host_pid) if runtime_info.host_pid is not None else "host PID unavailable"
         elif collector.status.name == "vmstat":
             target = "host system"

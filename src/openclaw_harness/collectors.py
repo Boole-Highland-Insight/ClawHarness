@@ -223,6 +223,31 @@ def build_collectors(
             disabled_detail="host PID is unavailable" if host_pid is None else None,
         ),
     )
+    strace_output = output_dir / "strace.log"
+    collectors.append(
+        BackgroundCommandCollector(
+            name="strace",
+            enabled=config.strace.enabled and host_pid is not None,
+            command=(
+                [
+                    "strace",
+                    "-tt",
+                    "-T",
+                    "-f",
+                    "-p",
+                    str(host_pid),
+                    "-o",
+                    str(strace_output),
+                    "-e",
+                    f"trace={','.join(config.strace.syscalls)}",
+                ]
+                if host_pid is not None
+                else ["strace"]
+            ),
+            output_path=strace_output,
+            disabled_detail="host PID is unavailable" if host_pid is None else None,
+        ),
+    )
     perf_stat_output = output_dir / "perf_stat.csv"
     collectors.append(
         BackgroundCommandCollector(

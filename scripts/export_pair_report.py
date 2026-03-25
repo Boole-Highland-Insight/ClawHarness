@@ -4,16 +4,26 @@ import argparse
 import json
 import math
 import shutil
+import sys
 from pathlib import Path
 from typing import Any
 
-import matplotlib.pyplot as plt
 import pandas as pd
+
+try:
+    import matplotlib.pyplot as plt
+except ModuleNotFoundError:
+    plt = None
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 OUT_ROOT = REPO_ROOT / "out"
 RES_ROOT = REPO_ROOT / "res"
+SCRIPTS_ROOT = REPO_ROOT / "scripts"
+
+sys.path.insert(0, str(SCRIPTS_ROOT))
+
+from plot_latency import LATENCY_COLUMNS, load_points
 
 
 def parse_args() -> argparse.Namespace:
@@ -37,6 +47,11 @@ def parse_args() -> argparse.Namespace:
         "--res-root",
         default=str(RES_ROOT),
         help="Report output root directory. Defaults to repo/res.",
+    )
+    parser.add_argument(
+        "--skip-figures",
+        action="store_true",
+        help="Refresh markdown/tables only and keep any existing figures untouched.",
     )
     return parser.parse_args()
 
@@ -71,6 +86,15 @@ def metric_mean(data: dict[str, Any], path: list[str], default: Any = None) -> A
     return default
 
 
+def metric_summary_mean(data: dict[str, Any], path: list[str], default: Any = None) -> Any:
+    metric = nested_get(data, path, None)
+    if isinstance(metric, dict):
+        summary = metric.get("summary")
+        if isinstance(summary, dict):
+            return summary.get("mean", default)
+    return default
+
+
 def safe_slug(value: str) -> str:
     chars: list[str] = []
     for ch in value.lower():
@@ -93,11 +117,11 @@ def format_scalar(value: Any) -> str:
 
 def build_resource_profile_row(summary: dict[str, Any], run_dir: Path) -> dict[str, Any]:
     latency = summary["latency_ms"]
-    docker = nested_get(summary, ["collector_analysis", "docker_stats", "metrics"], {})
+    docker = nested_get(summary, ["collector_analysis", "docker_stats"], {})
     pidstat = nested_get(summary, ["collector_analysis", "pidstat", "sections"], {})
     iostat = nested_get(summary, ["collector_analysis", "iostat"], {})
-    vmstat = nested_get(summary, ["collector_analysis", "vmstat", "key_metrics"], {})
-    perf_stat = nested_get(summary, ["collector_analysis", "perf_stat", "key_metrics"], {})
+    vmstat = nested_get(summary, ["collector_analysis", "vmstat"], {})
+    perf_stat = nested_get(summary, ["collector_analysis", "perf_stat"], {})
     busiest_device = (
         nested_get(summary, ["collector_analysis", "iostat", "key_metrics", "busiest_device"])
         or iostat.get("busiest_device_by_util_mean")
@@ -126,29 +150,72 @@ def build_resource_profile_row(summary: dict[str, Any], run_dir: Path) -> dict[s
         "total_p50_ms": latency["total"]["p50"],
         "total_p95_ms": latency["total"]["p95"],
         "total_p99_ms": latency["total"]["p99"],
-        "docker_cpu_percent_mean": metric_mean(docker, ["cpu_percent_value"]),
-        "docker_mem_percent_mean": metric_mean(docker, ["mem_percent_value"]),
-        "docker_block_read_bytes_mean": metric_mean(docker, ["block_read_bytes"]),
-        "docker_block_write_bytes_mean": metric_mean(docker, ["block_write_bytes"]),
-        "pidstat_cpu_percent_mean": metric_mean(pidstat, ["cpu", "metrics", "pct_cpu"]),
-        "pidstat_rss_kib_mean": metric_mean(pidstat, ["memory", "metrics", "rss_kib"]),
-        "pidstat_kb_wr_per_s_mean": metric_mean(pidstat, ["io", "metrics", "kb_wr_per_s"]),
-        "pidstat_iodelay_mean": metric_mean(pidstat, ["io", "metrics", "iodelay"]),
-        "pidstat_cswch_per_s_mean": metric_mean(pidstat, ["context_switch", "metrics", "cswch_per_s"]),
-        "pidstat_nvcswch_per_s_mean": metric_mean(pidstat, ["context_switch", "metrics", "nvcswch_per_s"]),
+        "docker_cpu_percent_mean": metric_summary_mean(docker, ["metric_summaries", "cpu_percent_value"]),
+        "docker_mem_percent_mean": metric_summary_mean(docker, ["metric_summaries", "mem_percent_value"]),
+        "docker_block_read_bytes_per_s_mean": metric_summary_mean(
+            docker,
+            ["metric_summaries", "block_read_bytes_per_s"],
+        ),
+        "docker_block_write_bytes_per_s_mean": metric_summary_mean(
+            docker,
+            ["metric_summaries", "block_write_bytes_per_s"],
+        ),
+        "pidstat_cpu_percent_mean": metric_summary_mean(pidstat, ["cpu", "metric_summaries", "pct_cpu"]),
+        "pidstat_rss_kib_mean": metric_summary_mean(pidstat, ["memory", "metric_summaries", "rss_kib"]),
+        "pidstat_kb_wr_per_s_mean": metric_summary_mean(pidstat, ["io", "metric_summaries", "kb_wr_per_s"]),
+        "pidstat_iodelay_mean": metric_summary_mean(pidstat, ["io", "metric_summaries", "iodelay"]),
+        "pidstat_cswch_per_s_mean": metric_summary_mean(
+            pidstat,
+            ["context_switch", "metric_summaries", "cswch_per_s"],
+        ),
+        "pidstat_nvcswch_per_s_mean": metric_summary_mean(
+            pidstat,
+            ["context_switch", "metric_summaries", "nvcswch_per_s"],
+        ),
         "iostat_busiest_device": busiest_device,
-        "iostat_pct_util_mean": nested_get(iostat_key, ["pct_util", "mean"], metric_mean(device_metrics, ["pct_util"])),
-        "iostat_r_await_mean": nested_get(iostat_key, ["r_await", "mean"], metric_mean(device_metrics, ["r_await"])),
-        "iostat_w_await_mean": nested_get(iostat_key, ["w_await", "mean"], metric_mean(device_metrics, ["w_await"])),
-        "iostat_aqu_sz_mean": nested_get(iostat_key, ["aqu_sz", "mean"], metric_mean(device_metrics, ["aqu_sz"])),
-        "iostat_wkb_s_mean": nested_get(iostat_key, ["wkb_s", "mean"], metric_mean(device_metrics, ["wkb_s"])),
-        "vmstat_interrupts_per_s_mean": nested_get(vmstat, ["interrupts_per_s", "mean"]),
-        "vmstat_context_switches_per_s_mean": nested_get(vmstat, ["context_switches_per_s", "mean"]),
-        "vmstat_run_queue_mean": nested_get(vmstat, ["run_queue", "mean"]),
-        "perf_cache_misses_mean": nested_get(perf_stat, ["cache_misses", "mean"]),
-        "perf_context_switches_mean": nested_get(perf_stat, ["context_switches", "mean"]),
-        "perf_cpu_migrations_mean": nested_get(perf_stat, ["cpu_migrations", "mean"]),
-        "perf_page_faults_mean": nested_get(perf_stat, ["page_faults", "mean"]),
+        "iostat_pct_util_mean": metric_summary_mean(
+            iostat,
+            ["key_metric_summaries", "pct_util"],
+            nested_get(iostat_key, ["pct_util", "mean"], metric_mean(device_metrics, ["pct_util"])),
+        ),
+        "iostat_r_await_mean": metric_summary_mean(
+            iostat,
+            ["key_metric_summaries", "r_await"],
+            nested_get(iostat_key, ["r_await", "mean"], metric_mean(device_metrics, ["r_await"])),
+        ),
+        "iostat_w_await_mean": metric_summary_mean(
+            iostat,
+            ["key_metric_summaries", "w_await"],
+            nested_get(iostat_key, ["w_await", "mean"], metric_mean(device_metrics, ["w_await"])),
+        ),
+        "iostat_f_await_mean": metric_summary_mean(
+            iostat,
+            ["key_metric_summaries", "f_await"],
+            nested_get(iostat_key, ["f_await", "mean"], metric_mean(device_metrics, ["f_await"])),
+        ),
+        "iostat_aqu_sz_mean": metric_summary_mean(
+            iostat,
+            ["key_metric_summaries", "aqu_sz"],
+            nested_get(iostat_key, ["aqu_sz", "mean"], metric_mean(device_metrics, ["aqu_sz"])),
+        ),
+        "iostat_wkb_s_mean": metric_summary_mean(
+            iostat,
+            ["key_metric_summaries", "wkb_s"],
+            nested_get(iostat_key, ["wkb_s", "mean"], metric_mean(device_metrics, ["wkb_s"])),
+        ),
+        "vmstat_interrupts_per_s_mean": metric_summary_mean(vmstat, ["key_metric_summaries", "interrupts_per_s"]),
+        "vmstat_context_switches_per_s_mean": metric_summary_mean(
+            vmstat,
+            ["key_metric_summaries", "context_switches_per_s"],
+        ),
+        "vmstat_run_queue_mean": metric_summary_mean(vmstat, ["key_metric_summaries", "run_queue"]),
+        "perf_cache_misses_mean": metric_summary_mean(perf_stat, ["key_metric_summaries", "cache_misses"]),
+        "perf_context_switches_mean": metric_summary_mean(
+            perf_stat,
+            ["key_metric_summaries", "context_switches"],
+        ),
+        "perf_cpu_migrations_mean": metric_summary_mean(perf_stat, ["key_metric_summaries", "cpu_migrations"]),
+        "perf_page_faults_mean": metric_summary_mean(perf_stat, ["key_metric_summaries", "page_faults"]),
         "perf_unsupported_events": ", ".join(perf_unsupported) if perf_unsupported else "",
     }
 
@@ -159,6 +226,8 @@ def save_dataframe(df: pd.DataFrame, output_path: Path) -> None:
 
 
 def plot_dataframe(df: pd.DataFrame, title: str, ylabel: str, output_path: Path) -> None:
+    if plt is None:
+        raise RuntimeError("matplotlib is required to render figures")
     fig, ax = plt.subplots(figsize=(10, 5))
     df.plot(kind="bar", ax=ax, rot=0, title=title)
     ax.set_ylabel(ylabel)
@@ -166,6 +235,61 @@ def plot_dataframe(df: pd.DataFrame, title: str, ylabel: str, output_path: Path)
     plt.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=180)
+    plt.close(fig)
+
+
+def plot_latency_timeline(
+    csv_path_a: Path,
+    csv_path_b: Path,
+    label_a: str,
+    label_b: str,
+    output_path: Path,
+) -> None:
+    if plt is None:
+        raise RuntimeError("matplotlib is required to render figures")
+    points_a = load_points(csv_path_a, only_success=False)
+    points_b = load_points(csv_path_b, only_success=False)
+    if not points_a:
+        raise ValueError(f"No usable latency rows found in {csv_path_a}")
+    if not points_b:
+        raise ValueError(f"No usable latency rows found in {csv_path_b}")
+
+    t0_a = points_a[0].started_at
+    t0_b = points_b[0].started_at
+    x_a = [(point.started_at - t0_a).total_seconds() for point in points_a]
+    x_b = [(point.started_at - t0_b).total_seconds() for point in points_b]
+
+    fig, axes = plt.subplots(
+        len(LATENCY_COLUMNS),
+        1,
+        sharex=True,
+        figsize=(14, 10),
+        constrained_layout=True,
+    )
+    if len(LATENCY_COLUMNS) == 1:
+        axes = [axes]
+
+    for ax, (column, label) in zip(axes, LATENCY_COLUMNS):
+        y_a = [point.values.get(column) for point in points_a]
+        y_b = [point.values.get(column) for point in points_b]
+        ax.plot(x_a, y_a, marker="o", markersize=3, linewidth=1.2, label=label_a)
+        ax.plot(
+            x_b,
+            y_b,
+            marker="o",
+            markersize=3,
+            linewidth=1.2,
+            linestyle="--",
+            label=label_b,
+        )
+        ax.set_ylabel(f"{label}\n(ms)")
+        ax.grid(True, alpha=0.25)
+        ax.legend()
+
+    axes[-1].set_xlabel("Time (s)")
+    axes[0].set_title(f"Latency timeline Comparison: {label_a} vs {label_b}")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=180, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -187,6 +311,7 @@ def build_pair_outputs(
     res_root: Path,
     left_name: str,
     right_name: str,
+    render_figures: bool,
 ) -> dict[str, Any]:
     left_run_dir = find_latest_run_dir(out_root, left_name)
     right_run_dir = find_latest_run_dir(out_root, right_name)
@@ -196,7 +321,11 @@ def build_pair_outputs(
     pair_slug = safe_slug(f"{left_name}__vs__{right_name}")
     pair_dir = res_root / pair_slug
     if pair_dir.exists():
-        shutil.rmtree(pair_dir)
+        if render_figures:
+            shutil.rmtree(pair_dir)
+        else:
+            shutil.rmtree(pair_dir / "tables", ignore_errors=True)
+            (pair_dir / "summary.md").unlink(missing_ok=True)
     pair_dir.mkdir(parents=True, exist_ok=True)
 
     profile_df = pd.DataFrame(
@@ -257,17 +386,18 @@ def build_pair_outputs(
         [
             "docker_cpu_percent_mean",
             "docker_mem_percent_mean",
-            "docker_block_read_bytes_mean",
-            "docker_block_write_bytes_mean",
+            "docker_block_read_bytes_per_s_mean",
+            "docker_block_write_bytes_per_s_mean",
         ]
     ].rename(
         columns={
             "docker_cpu_percent_mean": "cpu_percent",
             "docker_mem_percent_mean": "mem_percent",
-            "docker_block_read_bytes_mean": "block_read_bytes",
-            "docker_block_write_bytes_mean": "block_write_bytes",
+            "docker_block_read_bytes_per_s_mean": "block_read_bytes_per_s",
+            "docker_block_write_bytes_per_s_mean": "block_write_bytes_per_s",
         }
     )
+    container_cpu_mem_df = container_df[["cpu_percent", "mem_percent"]]
     process_df = profile_df[
         [
             "pidstat_cpu_percent_mean",
@@ -287,12 +417,15 @@ def build_pair_outputs(
             "pidstat_nvcswch_per_s_mean": "nvcswch_per_s",
         }
     )
+    phase_table_df = phase_df
+    tail_table_df = tail_df
     disk_df = profile_df[
         [
             "iostat_busiest_device",
             "iostat_pct_util_mean",
             "iostat_r_await_mean",
             "iostat_w_await_mean",
+            "iostat_f_await_mean",
             "iostat_aqu_sz_mean",
             "iostat_wkb_s_mean",
         ]
@@ -302,6 +435,7 @@ def build_pair_outputs(
             "iostat_pct_util_mean": "pct_util",
             "iostat_r_await_mean": "r_await",
             "iostat_w_await_mean": "w_await",
+            "iostat_f_await_mean": "f_await",
             "iostat_aqu_sz_mean": "aqu_sz",
             "iostat_wkb_s_mean": "wkb_s",
         }
@@ -342,51 +476,48 @@ def build_pair_outputs(
     for name, df in table_map.items():
         save_dataframe(df, pair_dir / "tables" / f"{name}.csv")
 
-    plt.style.use("seaborn-v0_8-whitegrid")
-    plot_dataframe(
-        latency_overview_df,
-        "End-to-End Latency",
-        "milliseconds",
-        pair_dir / "figures" / "latency_overview.png",
-    )
-    plot_dataframe(
-        phase_df,
-        "Mean Latency by Phase",
-        "milliseconds",
-        pair_dir / "figures" / "latency_phase_means.png",
-    )
-    plot_dataframe(
-        tail_df,
-        "Tail Latency",
-        "milliseconds",
-        pair_dir / "figures" / "latency_tail.png",
-    )
-    plot_dataframe(
-        container_df,
-        "Container Metrics",
-        "mean value",
-        pair_dir / "figures" / "container_metrics.png",
-    )
-    plot_dataframe(
-        process_df,
-        "Process Metrics",
-        "mean value",
-        pair_dir / "figures" / "process_metrics.png",
-    )
-    numeric_disk_df = disk_df.drop(columns=["busiest_device"])
-    plot_dataframe(
-        numeric_disk_df,
-        "Disk Metrics",
-        "mean value",
-        pair_dir / "figures" / "disk_metrics.png",
-    )
-    numeric_system_df = system_df.drop(columns=["perf_unsupported_events"])
-    plot_dataframe(
-        numeric_system_df,
-        "System And Perf Metrics",
-        "mean value",
-        pair_dir / "figures" / "system_metrics.png",
-    )
+    if render_figures:
+        plt.style.use("seaborn-v0_8-whitegrid")
+        plot_dataframe(
+            latency_overview_df,
+            "End-to-End Latency",
+            "milliseconds",
+            pair_dir / "figures" / "latency_overview.png",
+        )
+        plot_dataframe(
+            phase_df,
+            "Mean Latency by Phase",
+            "milliseconds",
+            pair_dir / "figures" / "latency_phase_means.png",
+        )
+        plot_dataframe(
+            tail_df,
+            "Tail Latency",
+            "milliseconds",
+            pair_dir / "figures" / "latency_tail.png",
+        )
+        plot_dataframe(
+            container_cpu_mem_df,
+            "Container CPU and Memory",
+            "mean value",
+            pair_dir / "figures" / "container_cpu_mem.png",
+        )
+        plot_latency_timeline(
+            left_run_dir / "latency.csv",
+            right_run_dir / "latency.csv",
+            label_a=left_name,
+            label_b=right_name,
+            output_path=pair_dir / "figures" / "latency_timeline.png",
+        )
+
+    figure_paths = [
+        ("Latency Overview", pair_dir / "figures" / "latency_overview.png"),
+        ("Latency Phase Means", pair_dir / "figures" / "latency_phase_means.png"),
+        ("Latency Tail", pair_dir / "figures" / "latency_tail.png"),
+        ("Container CPU and Memory", pair_dir / "figures" / "container_cpu_mem.png"),
+        ("Latency Timeline", pair_dir / "figures" / "latency_timeline.png"),
+    ]
+    figure_lines = [f"- ![{label}](figures/{path.name})" for label, path in figure_paths if path.exists()]
 
     profile_copy = profile_df.copy()
     profile_copy["run_dir"] = profile_copy["run_dir"].map(str)
@@ -400,17 +531,19 @@ def build_pair_outputs(
             "",
             "**Figures**",
             "",
-            f"- ![Latency Overview]({pair_slug}/figures/latency_overview.png)",
-            f"- ![Latency Phase Means]({pair_slug}/figures/latency_phase_means.png)",
-            f"- ![Latency Tail]({pair_slug}/figures/latency_tail.png)",
-            f"- ![Container Metrics]({pair_slug}/figures/container_metrics.png)",
-            f"- ![Process Metrics]({pair_slug}/figures/process_metrics.png)",
-            f"- ![Disk Metrics]({pair_slug}/figures/disk_metrics.png)",
-            f"- ![System Metrics]({pair_slug}/figures/system_metrics.png)",
+            *figure_lines,
             "",
             "**Latency Overview Table**",
             "",
             dataframe_to_markdown(latency_overview_df),
+            "",
+            "**Mean Latency by Phase Table**",
+            "",
+            dataframe_to_markdown(phase_table_df),
+            "",
+            "**Tail Latency Table**",
+            "",
+            dataframe_to_markdown(tail_table_df),
             "",
             "**Container Metrics Table**",
             "",
@@ -430,7 +563,7 @@ def build_pair_outputs(
             "",
         ]
     )
-    (pair_dir / "README.md").write_text(pair_markdown + "\n", encoding="utf-8")
+    (pair_dir / "summary.md").write_text(pair_markdown + "\n", encoding="utf-8")
 
     return {
         "pair_slug": pair_slug,
@@ -444,25 +577,20 @@ def main() -> int:
     out_root = Path(args.out_root).resolve()
     res_root = Path(args.res_root).resolve()
     res_root.mkdir(parents=True, exist_ok=True)
+    render_figures = not args.skip_figures
+    if render_figures and plt is None:
+        print("matplotlib not found; refreshing markdown/tables only and preserving existing figures", file=sys.stderr)
+        render_figures = False
 
-    sections: list[str] = [
-        "# Benchmark Comparison Report",
-        "",
-        f"- out root: `{out_root}`",
-        f"- res root: `{res_root}`",
-        "",
-    ]
     for left_name, right_name in args.pair:
         result = build_pair_outputs(
             out_root=out_root,
             res_root=res_root,
             left_name=left_name,
             right_name=right_name,
+            render_figures=render_figures,
         )
-        sections.append(result["markdown"])
-
-    (res_root / "summary.md").write_text("\n".join(sections).strip() + "\n", encoding="utf-8")
-    print(res_root / "summary.md")
+        print(result["pair_dir"] / "summary.md")
     return 0
 
 

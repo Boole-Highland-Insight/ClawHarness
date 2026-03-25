@@ -48,9 +48,28 @@ class PerfRecordConfig:
 
 
 @dataclass(slots=True)
+class StraceConfig:
+    enabled: bool = False
+    interval_sec: int = 1
+    syscalls: list[str] = field(
+        default_factory=lambda: [
+            "read",
+            "write",
+            "futex",
+            "epoll_wait",
+            "clock_nanosleep",
+            "poll",
+            "select",
+            "accept4",
+        ],
+    )
+
+
+@dataclass(slots=True)
 class CollectorsConfig:
     docker_stats: DockerStatsConfig = field(default_factory=DockerStatsConfig)
     pidstat: PidstatConfig = field(default_factory=PidstatConfig)
+    strace: StraceConfig = field(default_factory=StraceConfig)
     perf_stat: PerfStatConfig = field(default_factory=PerfStatConfig)
     perf_record: PerfRecordConfig = field(default_factory=PerfRecordConfig)
     iostat: "IostatConfig" = field(default_factory=lambda: IostatConfig())
@@ -160,6 +179,7 @@ def load_scenario(path: Path) -> ScenarioConfig:
     collector_raw = raw.get("collectors", {})
     _merge_dataclass(collector_raw.get("docker_stats"), scenario.collectors.docker_stats)
     _merge_dataclass(collector_raw.get("pidstat"), scenario.collectors.pidstat)
+    _merge_dataclass(collector_raw.get("strace"), scenario.collectors.strace)
     _merge_dataclass(collector_raw.get("perf_stat"), scenario.collectors.perf_stat)
     _merge_dataclass(collector_raw.get("perf_record"), scenario.collectors.perf_record)
     _merge_dataclass(collector_raw.get("iostat"), scenario.collectors.iostat)

@@ -10,14 +10,14 @@
 - 将每次运行产物写入 `out/<timestamp>_<scenario>/`
 - 采集 `latency.csv`、`summary.json`、`meta.json`、`docker_stats.csv`
 - 在负载开始前写出 `preflight.json`，记录目标 URL、healthcheck、发现到的 PID，以及 collector 附着计划
-- 将 `docker stats`、`pidstat`、`iostat`、`perf stat` 和 `perf record` 接成可选 collector
-- 把 `docker stats`、`pidstat`、`iostat` 和 `perf stat` 的原始输出解析成结构化 CSV/JSON 报告
+- 将 `docker stats`、`pidstat`、`strace`、`iostat`、`perf stat` 和 `perf record` 接成可选 collector
+- 把 `docker stats`、`pidstat`、`strace`、`iostat` 和 `perf stat` 的原始输出解析成结构化 CSV/JSON 报告
 - 写出 `environment.json`，记录当前宿主机实际具备哪些观测能力
 - 支持从 `tasks/*.md` 读取真实任务式 prompt，模拟更接近实际使用的交互延迟
 
 默认场景使用 `/context list`，因此不依赖模型 key。
 本地 Docker 场景遵循当前推荐的 WSL 策略：优先使用 `docker stats` + `pidstat`，
-`perf` 默认关闭，等迁移到 Linux VPS 后再作为正式采集手段启用。
+`perf` 默认关闭，`strace` 也默认关闭，等需要短窗口 syscall 排查时再单独启用。
 `docker_single_100_summary.json` 和 `docker_multi_100_summary.json` 现在也会开启
 `docker_stats`、`pidstat` 和 `iostat`，因此即使是最基础的 `/context list`
 大样本对比，也会在 `summary.json` 里保留容器 CPU/内存、进程 CPU/内存/IO 和磁盘指标汇总。
@@ -239,9 +239,9 @@ python -m openclaw_harness run --scenario scenarios/docker_multi_task_semianalys
 - `host_direct` 场景默认假设 harness 和 gateway 跑在同一台 VPS 上。
 - `host_direct` 会尝试根据配置的监听端口自动发现 `host_pid`。
 - 只有在你想覆盖自动发现结果时，才需要手动填写 `runtime.host_pid`。
-- 如果没有安装 `pidstat` 或 `perf`，harness 会把对应 collector 标记为 `skipped`，但整次运行仍会继续完成。
+- 如果没有安装 `pidstat`、`strace` 或 `perf`，harness 会把对应 collector 标记为 `skipped`，但整次运行仍会继续完成。
 - 在 WSL 上，即使存在 `/usr/bin/perf`，如果缺少与当前内核匹配的 perf 二进制，它仍然可能不可用；这一点会在 `environment.json` 中明确标记。
-- 解析后的 collector 产物会和原始文件一起写在同一目录下，例如 `docker_stats.summary.json`、`pidstat_cpu.csv`、`pidstat.summary.json`、`iostat.summary.json`、`perf_stat.summary.json`。
+- 解析后的 collector 产物会和原始文件一起写在同一目录下，例如 `docker_stats.summary.json`、`pidstat_cpu.csv`、`pidstat.summary.json`、`strace.log`、`iostat.summary.json`、`perf_stat.summary.json`。
 
 ## 执行测试
 

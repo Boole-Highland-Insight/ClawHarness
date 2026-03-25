@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 from dataclasses import dataclass
+from datetime import datetime
 import re
 from pathlib import Path
 from statistics import fmean
@@ -52,6 +53,69 @@ PIDSTAT_SECTIONS = (
         numeric_fields=("cswch_per_s", "nvcswch_per_s"),
     ),
 )
+
+
+DOCKER_METRIC_META = {
+    "cpu_percent_value": {"unit": "percent", "source_field": "cpu_percent"},
+    "mem_percent_value": {"unit": "percent", "source_field": "mem_percent"},
+    "pids_value": {"unit": "count", "source_field": "pids"},
+    "mem_usage_bytes": {"unit": "bytes", "source_field": "mem_usage_limit.left"},
+    "mem_limit_bytes": {"unit": "bytes", "source_field": "mem_usage_limit.right"},
+    "net_rx_bytes_per_s": {"unit": "bytes/sec", "source_field": "delta(net_io.left)/elapsed_sec"},
+    "net_tx_bytes_per_s": {"unit": "bytes/sec", "source_field": "delta(net_io.right)/elapsed_sec"},
+    "block_read_bytes_per_s": {"unit": "bytes/sec", "source_field": "delta(block_io.left)/elapsed_sec"},
+    "block_write_bytes_per_s": {"unit": "bytes/sec", "source_field": "delta(block_io.right)/elapsed_sec"},
+}
+
+PIDSTAT_METRIC_META = {
+    "pct_usr": {"unit": "percent"},
+    "pct_system": {"unit": "percent"},
+    "pct_guest": {"unit": "percent"},
+    "pct_wait": {"unit": "percent"},
+    "pct_cpu": {"unit": "percent"},
+    "minflt_per_s": {"unit": "faults/sec"},
+    "majflt_per_s": {"unit": "faults/sec"},
+    "vsz_kib": {"unit": "KiB"},
+    "rss_kib": {"unit": "KiB"},
+    "pct_mem": {"unit": "percent"},
+    "kb_rd_per_s": {"unit": "KiB/sec"},
+    "kb_wr_per_s": {"unit": "KiB/sec"},
+    "kb_ccwr_per_s": {"unit": "KiB/sec"},
+    "iodelay": {"unit": "ticks"},
+    "cswch_per_s": {"unit": "switches/sec"},
+    "nvcswch_per_s": {"unit": "switches/sec"},
+}
+
+IOSTAT_METRIC_META = {
+    "r_s": {"unit": "ops/sec"},
+    "w_s": {"unit": "ops/sec"},
+    "rkb_s": {"unit": "KiB/sec"},
+    "wkb_s": {"unit": "KiB/sec"},
+    "r_await": {"unit": "ms"},
+    "w_await": {"unit": "ms"},
+    "f_await": {"unit": "ms"},
+    "aqu_sz": {"unit": "requests"},
+    "pct_util": {"unit": "percent"},
+}
+
+VMSTAT_METRIC_META = {
+    "r": {"unit": "processes"},
+    "b": {"unit": "processes"},
+    "in": {"unit": "interrupts/sec"},
+    "cs": {"unit": "switches/sec"},
+}
+
+PERF_EVENT_UNITS = {
+    "cache-misses": "events/sec",
+    "cache-references": "events/sec",
+    "context-switches": "events/sec",
+    "cpu-migrations": "events/sec",
+    "page-faults": "events/sec",
+    "minor-faults": "events/sec",
+    "major-faults": "events/sec",
+    "cpu-clock": "CPUs utilized",
+    "task-clock": "CPUs utilized",
+}
 
 
 def parse_collector_artifacts(
@@ -116,6 +180,7 @@ def parse_collector_artifacts(
 
 def parse_docker_stats_csv(path: Path, *, output_dir: Path) -> ParsedArtifact | None:
     rows: list[dict[str, Any]] = []
+    previous_row: dict[str, Any] | None = None
     with path.open("r", encoding="utf-8", errors="replace", newline="") as handle:
         reader = csv.DictReader(handle)
         for raw_row in reader:
@@ -127,21 +192,22 @@ def parse_docker_stats_csv(path: Path, *, output_dir: Path) -> ParsedArtifact | 
             mem_usage, mem_limit = _parse_usage_pair(raw_row.get("mem_usage_limit", ""))
             net_rx, net_tx = _parse_usage_pair(raw_row.get("net_io", ""))
             block_read, block_write = _parse_usage_pair(raw_row.get("block_io", ""))
-            rows.append(
-                {
-                    "timestamp": str(raw_row.get("timestamp", "")).strip(),
-                    "container": str(raw_row.get("container", "")).strip(),
-                    "cpu_percent_value": cpu_pct,
-                    "mem_percent_value": mem_pct,
-                    "pids_value": pids,
-                    "mem_usage_bytes": mem_usage,
-                    "mem_limit_bytes": mem_limit,
-                    "net_rx_bytes": net_rx,
-                    "net_tx_bytes": net_tx,
-                    "block_read_bytes": block_read,
-                    "block_write_bytes": block_write,
-                }
-            )
+            row = {
+                "timestamp": str(raw_row.get("timestamp", "")).strip(),
+                "container": str(raw_row.get("container", "")).strip(),
+                "cpu_percent_value": cpu_pct,
+                "mem_percent_value": mem_pct,
+                "pids_value": pids,
+                "mem_usage_bytes": mem_usage,
+                "mem_limit_bytes": mem_limit,
+                "net_rx_bytes": net_rx,
+                "net_tx_bytes": net_tx,
+                "block_read_bytes": block_read,
+                "block_write_bytes": block_write,
+            }
+            _add_cumulative_rate_fields(row=row, previous_row=previous_row)
+            rows.append(row)
+            previous_row = row
 
     if not rows:
         return None
@@ -155,19 +221,24 @@ def parse_docker_stats_csv(path: Path, *, output_dir: Path) -> ParsedArtifact | 
         "pids_value",
         "mem_usage_bytes",
         "mem_limit_bytes",
-        "net_rx_bytes",
-        "net_tx_bytes",
-        "block_read_bytes",
-        "block_write_bytes",
+        "net_rx_bytes_per_s",
+        "net_tx_bytes_per_s",
+        "block_read_bytes_per_s",
+        "block_write_bytes_per_s",
     )
+    metrics = {
+        field: summarize_ms(
+            [float(row[field]) for row in rows if isinstance(row.get(field), (int, float))]
+        )
+        for field in numeric_fields
+    }
     summary = {
         "raw_csv": str(path),
         "rows": len(rows),
         "container": next((str(row["container"]) for row in rows if row.get("container")), ""),
-        "metrics": {
-            field: summarize_ms(
-                [float(row[field]) for row in rows if isinstance(row.get(field), (int, float))]
-            )
+        "metrics": metrics,
+        "metric_summaries": {
+            field: _metric_summary_entry(summary=metrics[field], **DOCKER_METRIC_META[field])
             for field in numeric_fields
         },
     }
@@ -238,6 +309,14 @@ def parse_pidstat_log(path: Path, *, output_dir: Path) -> ParsedArtifact | None:
                 for field in section.numeric_fields
             },
         }
+        section_summaries[section.name]["metric_summaries"] = {
+            field: _metric_summary_entry(
+                summary=section_summaries[section.name]["metrics"][field],
+                unit=PIDSTAT_METRIC_META.get(field, {}).get("unit", ""),
+                source_field=field,
+            )
+            for field in section.numeric_fields
+        }
 
     if not section_summaries:
         return None
@@ -272,18 +351,57 @@ def parse_perf_stat_csv(path: Path, *, output_dir: Path) -> ParsedArtifact | Non
     parsed_path = output_dir / "perf_stat.parsed.csv"
     _write_csv(parsed_path, rows)
 
+    metrics = {
+        event: _summarize_present_numeric(
+            [
+                float(row["metric_value"])
+                for row in rows
+                if row.get("event") == event and isinstance(row.get("metric_value"), (int, float))
+            ]
+        )
+        for event in sorted({str(row["event"]) for row in rows if row.get("event")})
+    }
+    key_metrics = {
+        "cache_misses": _summarize_present_numeric(
+            [
+                float(row["metric_value"])
+                for row in rows
+                if row.get("event") == "cache-misses" and isinstance(row.get("metric_value"), (int, float))
+            ]
+        ),
+        "context_switches": _summarize_present_numeric(
+            [
+                float(row["metric_value"])
+                for row in rows
+                if row.get("event") == "context-switches" and isinstance(row.get("metric_value"), (int, float))
+            ]
+        ),
+        "cpu_migrations": _summarize_present_numeric(
+            [
+                float(row["metric_value"])
+                for row in rows
+                if row.get("event") == "cpu-migrations" and isinstance(row.get("metric_value"), (int, float))
+            ]
+        ),
+        "page_faults": _summarize_present_numeric(
+            [
+                float(row["metric_value"])
+                for row in rows
+                if row.get("event") == "page-faults" and isinstance(row.get("metric_value"), (int, float))
+            ]
+        ),
+    }
     summary = {
         "raw_csv": str(path),
         "rows": len(rows),
-        "metrics": {
-            event: _summarize_numeric(
-                [
-                    float(row["counter_value"])
-                    for row in rows
-                    if row.get("event") == event and isinstance(row.get("counter_value"), (int, float))
-                ]
+        "metrics": metrics,
+        "metric_summaries": {
+            event: _metric_summary_entry(
+                summary=metric_summary,
+                unit=_infer_perf_metric_unit(rows=rows, event=event),
+                source_field="metric_value",
             )
-            for event in sorted({str(row["event"]) for row in rows if row.get("event")})
+            for event, metric_summary in metrics.items()
         },
         "events": [
             {
@@ -298,34 +416,27 @@ def parse_perf_stat_csv(path: Path, *, output_dir: Path) -> ParsedArtifact | Non
             }
             for row in rows
         ],
-        "key_metrics": {
-            "cache_misses": _summarize_numeric(
-                [
-                    float(row["counter_value"])
-                    for row in rows
-                    if row.get("event") == "cache-misses" and isinstance(row.get("counter_value"), (int, float))
-                ]
+        "key_metrics": key_metrics,
+        "key_metric_summaries": {
+            "cache_misses": _metric_summary_entry(
+                summary=key_metrics["cache_misses"],
+                unit=_infer_perf_metric_unit(rows=rows, event="cache-misses"),
+                source_field="metric_value",
             ),
-            "context_switches": _summarize_numeric(
-                [
-                    float(row["counter_value"])
-                    for row in rows
-                    if row.get("event") == "context-switches" and isinstance(row.get("counter_value"), (int, float))
-                ]
+            "context_switches": _metric_summary_entry(
+                summary=key_metrics["context_switches"],
+                unit=_infer_perf_metric_unit(rows=rows, event="context-switches"),
+                source_field="metric_value",
             ),
-            "cpu_migrations": _summarize_numeric(
-                [
-                    float(row["counter_value"])
-                    for row in rows
-                    if row.get("event") == "cpu-migrations" and isinstance(row.get("counter_value"), (int, float))
-                ]
+            "cpu_migrations": _metric_summary_entry(
+                summary=key_metrics["cpu_migrations"],
+                unit=_infer_perf_metric_unit(rows=rows, event="cpu-migrations"),
+                source_field="metric_value",
             ),
-            "page_faults": _summarize_numeric(
-                [
-                    float(row["counter_value"])
-                    for row in rows
-                    if row.get("event") == "page-faults" and isinstance(row.get("counter_value"), (int, float))
-                ]
+            "page_faults": _metric_summary_entry(
+                summary=key_metrics["page_faults"],
+                unit=_infer_perf_metric_unit(rows=rows, event="page-faults"),
+                source_field="metric_value",
             ),
         },
         "unsupported_events": sorted(
@@ -394,7 +505,7 @@ def parse_iostat_log(path: Path, *, output_dir: Path) -> ParsedArtifact | None:
     parsed_path = output_dir / "iostat.parsed.csv"
     _write_csv(parsed_path, rows)
 
-    metric_names = [key for key in rows[0].keys() if key != "device"]
+    metric_names = [key for key in rows[0].keys() if key not in {"device", "await"}]
     by_device: dict[str, list[dict[str, Any]]] = {}
     for row in rows:
         device = str(row.get("device", "")).strip()
@@ -415,6 +526,14 @@ def parse_iostat_log(path: Path, *, output_dir: Path) -> ParsedArtifact | None:
         devices_summary[device] = {
             "rows": len(device_rows),
             "metrics": metrics,
+            "metric_summaries": {
+                metric: _metric_summary_entry(
+                    summary=metrics[metric],
+                    unit=IOSTAT_METRIC_META.get(metric, {}).get("unit", ""),
+                    source_field=metric,
+                )
+                for metric in metric_names
+            },
         }
         util_mean = float(metrics.get("pct_util", {}).get("mean", 0.0))
         if util_mean > busiest_util_mean:
@@ -429,11 +548,43 @@ def parse_iostat_log(path: Path, *, output_dir: Path) -> ParsedArtifact | None:
         "key_metrics": {
             "busiest_device": busiest_device,
             "pct_util": devices_summary.get(busiest_device, {}).get("metrics", {}).get("pct_util", {}),
-            "await": devices_summary.get(busiest_device, {}).get("metrics", {}).get("await", {}),
             "r_await": devices_summary.get(busiest_device, {}).get("metrics", {}).get("r_await", {}),
             "w_await": devices_summary.get(busiest_device, {}).get("metrics", {}).get("w_await", {}),
+            "f_await": devices_summary.get(busiest_device, {}).get("metrics", {}).get("f_await", {}),
             "aqu_sz": devices_summary.get(busiest_device, {}).get("metrics", {}).get("aqu_sz", {}),
             "wkb_s": devices_summary.get(busiest_device, {}).get("metrics", {}).get("wkb_s", {}),
+        },
+        "key_metric_summaries": {
+            "pct_util": _metric_summary_entry(
+                summary=devices_summary.get(busiest_device, {}).get("metrics", {}).get("pct_util", {}),
+                unit=IOSTAT_METRIC_META["pct_util"]["unit"],
+                source_field="pct_util",
+            ),
+            "r_await": _metric_summary_entry(
+                summary=devices_summary.get(busiest_device, {}).get("metrics", {}).get("r_await", {}),
+                unit=IOSTAT_METRIC_META["r_await"]["unit"],
+                source_field="r_await",
+            ),
+            "w_await": _metric_summary_entry(
+                summary=devices_summary.get(busiest_device, {}).get("metrics", {}).get("w_await", {}),
+                unit=IOSTAT_METRIC_META["w_await"]["unit"],
+                source_field="w_await",
+            ),
+            "f_await": _metric_summary_entry(
+                summary=devices_summary.get(busiest_device, {}).get("metrics", {}).get("f_await", {}),
+                unit=IOSTAT_METRIC_META["f_await"]["unit"],
+                source_field="f_await",
+            ),
+            "aqu_sz": _metric_summary_entry(
+                summary=devices_summary.get(busiest_device, {}).get("metrics", {}).get("aqu_sz", {}),
+                unit=IOSTAT_METRIC_META["aqu_sz"]["unit"],
+                source_field="aqu_sz",
+            ),
+            "wkb_s": _metric_summary_entry(
+                summary=devices_summary.get(busiest_device, {}).get("metrics", {}).get("wkb_s", {}),
+                unit=IOSTAT_METRIC_META["wkb_s"]["unit"],
+                source_field="wkb_s",
+            ),
         },
     }
     summary_path = output_dir / "iostat.summary.json"
@@ -470,27 +621,59 @@ def parse_vmstat_log(path: Path, *, output_dir: Path) -> ParsedArtifact | None:
     _write_csv(parsed_path, rows)
 
     metric_names = [key for key in rows[0].keys()]
+    metrics = {
+        metric: _summarize_numeric(
+            [float(row[metric]) for row in rows if isinstance(row.get(metric), (int, float))]
+        )
+        for metric in metric_names
+    }
+    key_metrics = {
+        "interrupts_per_s": _summarize_numeric(
+            [float(row["in"]) for row in rows if isinstance(row.get("in"), (int, float))]
+        ),
+        "context_switches_per_s": _summarize_numeric(
+            [float(row["cs"]) for row in rows if isinstance(row.get("cs"), (int, float))]
+        ),
+        "blocked_processes": _summarize_numeric(
+            [float(row["b"]) for row in rows if isinstance(row.get("b"), (int, float))]
+        ),
+        "run_queue": _summarize_numeric(
+            [float(row["r"]) for row in rows if isinstance(row.get("r"), (int, float))]
+        ),
+    }
     summary = {
         "raw_log": str(path),
         "rows": len(rows),
-        "metrics": {
-            metric: _summarize_numeric(
-                [float(row[metric]) for row in rows if isinstance(row.get(metric), (int, float))]
+        "metrics": metrics,
+        "metric_summaries": {
+            metric: _metric_summary_entry(
+                summary=metrics[metric],
+                unit=VMSTAT_METRIC_META.get(metric, {}).get("unit", ""),
+                source_field=metric,
             )
             for metric in metric_names
         },
-        "key_metrics": {
-            "interrupts_per_s": _summarize_numeric(
-                [float(row["in"]) for row in rows if isinstance(row.get("in"), (int, float))]
+        "key_metrics": key_metrics,
+        "key_metric_summaries": {
+            "interrupts_per_s": _metric_summary_entry(
+                summary=key_metrics["interrupts_per_s"],
+                unit="interrupts/sec",
+                source_field="in",
             ),
-            "context_switches_per_s": _summarize_numeric(
-                [float(row["cs"]) for row in rows if isinstance(row.get("cs"), (int, float))]
+            "context_switches_per_s": _metric_summary_entry(
+                summary=key_metrics["context_switches_per_s"],
+                unit="switches/sec",
+                source_field="cs",
             ),
-            "blocked_processes": _summarize_numeric(
-                [float(row["b"]) for row in rows if isinstance(row.get("b"), (int, float))]
+            "blocked_processes": _metric_summary_entry(
+                summary=key_metrics["blocked_processes"],
+                unit="processes",
+                source_field="b",
             ),
-            "run_queue": _summarize_numeric(
-                [float(row["r"]) for row in rows if isinstance(row.get("r"), (int, float))]
+            "run_queue": _metric_summary_entry(
+                summary=key_metrics["run_queue"],
+                unit="processes",
+                source_field="r",
             ),
         },
     }
@@ -644,6 +827,51 @@ def _parse_percent_maybe(raw: str) -> int | float | str:
     return _parse_number_maybe(raw.strip().rstrip("%"))
 
 
+def _add_cumulative_rate_fields(*, row: dict[str, Any], previous_row: dict[str, Any] | None) -> None:
+    cumulative_pairs = (
+        ("net_rx_bytes", "net_rx_bytes_per_s"),
+        ("net_tx_bytes", "net_tx_bytes_per_s"),
+        ("block_read_bytes", "block_read_bytes_per_s"),
+        ("block_write_bytes", "block_write_bytes_per_s"),
+    )
+    if previous_row is None:
+        for _source, target in cumulative_pairs:
+            row[target] = ""
+        return
+    current_time = _parse_datetime_maybe(str(row.get("timestamp", "")))
+    previous_time = _parse_datetime_maybe(str(previous_row.get("timestamp", "")))
+    if current_time is None or previous_time is None:
+        for _source, target in cumulative_pairs:
+            row[target] = ""
+        return
+    elapsed = (current_time - previous_time).total_seconds()
+    if elapsed <= 0:
+        for _source, target in cumulative_pairs:
+            row[target] = ""
+        return
+    for source, target in cumulative_pairs:
+        current_value = row.get(source)
+        previous_value = previous_row.get(source)
+        if not isinstance(current_value, (int, float)) or not isinstance(previous_value, (int, float)):
+            row[target] = ""
+            continue
+        delta = float(current_value) - float(previous_value)
+        if delta < 0:
+            row[target] = ""
+            continue
+        row[target] = delta / elapsed
+
+
+def _parse_datetime_maybe(raw: str) -> datetime | None:
+    value = raw.strip()
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
 def _parse_usage_pair(raw: str | None) -> tuple[float, float]:
     value = str(raw or "").strip()
     if not value or "/" not in value:
@@ -694,6 +922,35 @@ def _summarize_numeric(values: list[float]) -> dict[str, float]:
         "max": float(max(values)),
         "mean": float(fmean(values)),
     }
+
+
+def _summarize_present_numeric(values: list[float]) -> dict[str, float]:
+    if not values:
+        return {}
+    return _summarize_numeric(values)
+
+
+def _metric_summary_entry(
+    *,
+    summary: dict[str, Any],
+    unit: str,
+    source_field: str,
+) -> dict[str, Any]:
+    return {
+        "summary": summary,
+        "unit": unit,
+        "source_field": source_field,
+    }
+
+
+def _infer_perf_metric_unit(*, rows: list[dict[str, Any]], event: str) -> str:
+    for row in rows:
+        if row.get("event") != event:
+            continue
+        unit = str(row.get("metric_unit", "")).strip()
+        if unit:
+            return unit
+    return PERF_EVENT_UNITS.get(event, "")
 
 
 def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:

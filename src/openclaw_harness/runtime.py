@@ -115,6 +115,7 @@ class DockerRuntimeManager:
         self.container_id = started.stdout.strip()
         self._wait_for_health()
         self._write_logs()
+        host_pid, host_pid_source = self._inspect_host_pid()
         return RuntimeInfo(
             kind="docker",
             url=f"ws://{self.config.host}:{self.config.host_port}",
@@ -122,7 +123,8 @@ class DockerRuntimeManager:
             started_by_harness=True,
             container_name=self.container_name,
             container_id=self.container_id,
-            host_pid=self._inspect_pid(),
+            host_pid=host_pid,
+            host_pid_source=host_pid_source,
             repo_root=str(self.repo_root),
             runtime_dir=str(self.runtime_dir),
         )
@@ -192,6 +194,80 @@ class DockerRuntimeManager:
         if not raw.isdigit():
             return None
         return int(raw)
+
+    def _inspect_host_pid(self) -> tuple[int | None, str | None]:
+        init_pid = self._inspect_pid()
+        if init_pid is None:
+            return None, None
+
+        top_result = run_command(
+            ["docker", "top", self.container_name, "-eo", "pid,ppid,comm,args"],
+            check=False,
+        )
+        if top_result.returncode == 0:
+            rows = self._parse_docker_top_rows(top_result.stdout)
+            preferred = self._pick_preferred_container_pid(rows=rows, init_pid=init_pid)
+            if preferred is not None:
+                return preferred, "auto:docker_top"
+        return init_pid, "auto:docker_inspect"
+
+    def _parse_docker_top_rows(self, raw: str) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        lines = [line.rstrip() for line in raw.splitlines() if line.strip()]
+        if len(lines) <= 1:
+            return rows
+        for line in lines[1:]:
+            parts = line.split(None, 3)
+            if len(parts) < 3:
+                continue
+            pid_raw, ppid_raw, comm = parts[:3]
+            args = parts[3] if len(parts) > 3 else ""
+            if not pid_raw.isdigit():
+                continue
+            rows.append(
+                {
+                    "pid": int(pid_raw),
+                    "ppid": int(ppid_raw) if ppid_raw.isdigit() else None,
+                    "comm": comm,
+                    "args": args,
+                }
+            )
+        return rows
+
+    def _pick_preferred_container_pid(self, *, rows: list[dict[str, Any]], init_pid: int) -> int | None:
+        if not rows:
+            return None
+
+        def is_descendant(pid: int) -> bool:
+            by_pid = {int(row["pid"]): row for row in rows if isinstance(row.get("pid"), int)}
+            current = by_pid.get(pid)
+            seen: set[int] = set()
+            while current is not None:
+                current_pid = int(current["pid"])
+                if current_pid in seen:
+                    return False
+                seen.add(current_pid)
+                parent_pid = current.get("ppid")
+                if parent_pid == init_pid:
+                    return True
+                current = by_pid.get(int(parent_pid)) if isinstance(parent_pid, int) else None
+            return False
+
+        preferred_patterns = (
+            ("node", " dist/index.js gateway"),
+            ("node", " gateway"),
+        )
+        for comm, needle in preferred_patterns:
+            for row in rows:
+                args = str(row.get("args", ""))
+                if row.get("comm") == comm and needle.strip() in args and is_descendant(int(row["pid"])):
+                    return int(row["pid"])
+
+        for row in rows:
+            if row.get("comm") == "node" and is_descendant(int(row["pid"])):
+                return int(row["pid"])
+
+        return None
 
     def _wait_for_health(self) -> None:
         url = f"http://{self.config.host}:{self.config.host_port}/healthz"
