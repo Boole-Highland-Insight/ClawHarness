@@ -1,5 +1,5 @@
 {
-  "name": "vps-docker-multi-task-00-500-full",
+  "name": "vps-docker-multi-task-00-500-10x50",
   "runtime": {
     "kind": "docker",
     "image": "openclaw:bench-local",
@@ -17,15 +17,15 @@
   "client": {
     "role": "operator",
     "message": "/context list",
-    "session_prefix": "vps-docker-multi-task-00-500-full",
+    "session_prefix": "vps-docker-multi-task-00-500-10x50",
     "session_mode": "per_worker",
     "history_limit": 20,
     "wait_timeout_ms": 15000,
     "send_timeout_ms": 15000
   },
   "load": {
-    "concurrency": 20,
-    "requests_per_worker": 25,
+    "concurrency": 10,
+    "requests_per_worker": 50,
     "worker_stagger_ms": 150,
     "request_pause_ms": 0
   },

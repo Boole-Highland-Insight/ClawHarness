@@ -70,12 +70,20 @@ def load_summary(run_dir: Path) -> dict[str, Any]:
     return json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
 
 
-def nested_get(data: dict[str, Any], path: list[str], default: Any = None) -> Any:
+def nested_get(data: dict[str, Any], path: list[Any], default: Any = None) -> Any:
     current: Any = data
     for key in path:
-        if not isinstance(current, dict) or key not in current:
-            return default
-        current = current[key]
+        if isinstance(current, dict):
+            if key not in current:
+                return default
+            current = current[key]
+            continue
+        if isinstance(current, list) and isinstance(key, int):
+            if key < 0 or key >= len(current):
+                return default
+            current = current[key]
+            continue
+        return default
     return current
 
 
@@ -93,6 +101,46 @@ def metric_summary_mean(data: dict[str, Any], path: list[str], default: Any = No
         if isinstance(summary, dict):
             return summary.get("mean", default)
     return default
+
+
+def time_series_points(data: dict[str, Any], path: list[str]) -> list[tuple[float, float]]:
+    entry = nested_get(data, path, None)
+    if not isinstance(entry, dict):
+        return []
+    points = entry.get("points")
+    if not isinstance(points, list):
+        return []
+    result: list[tuple[float, float]] = []
+    for point in points:
+        if not isinstance(point, dict):
+            continue
+        t_sec = point.get("t_sec")
+        value = point.get("value")
+        if isinstance(t_sec, (int, float)) and isinstance(value, (int, float)):
+            result.append((float(t_sec), float(value)))
+    return result
+
+
+def time_series_peak_value(data: dict[str, Any], path: list[str], default: Any = None) -> Any:
+    entry = nested_get(data, path, None)
+    if not isinstance(entry, dict):
+        return default
+    peak = entry.get("peak")
+    if not isinstance(peak, dict):
+        return default
+    value = peak.get("value")
+    return value if isinstance(value, (int, float)) else default
+
+
+def time_series_peak_t_sec(data: dict[str, Any], path: list[str], default: Any = None) -> Any:
+    entry = nested_get(data, path, None)
+    if not isinstance(entry, dict):
+        return default
+    peak = entry.get("peak")
+    if not isinstance(peak, dict):
+        return default
+    value = peak.get("t_sec")
+    return value if isinstance(value, (int, float)) else default
 
 
 def safe_slug(value: str) -> str:
@@ -122,6 +170,7 @@ def build_resource_profile_row(summary: dict[str, Any], run_dir: Path) -> dict[s
     iostat = nested_get(summary, ["collector_analysis", "iostat"], {})
     vmstat = nested_get(summary, ["collector_analysis", "vmstat"], {})
     perf_stat = nested_get(summary, ["collector_analysis", "perf_stat"], {})
+    strace = nested_get(summary, ["collector_analysis", "strace"], {})
     busiest_device = (
         nested_get(summary, ["collector_analysis", "iostat", "key_metrics", "busiest_device"])
         or iostat.get("busiest_device_by_util_mean")
@@ -217,7 +266,92 @@ def build_resource_profile_row(summary: dict[str, Any], run_dir: Path) -> dict[s
         "perf_cpu_migrations_mean": metric_summary_mean(perf_stat, ["key_metric_summaries", "cpu_migrations"]),
         "perf_page_faults_mean": metric_summary_mean(perf_stat, ["key_metric_summaries", "page_faults"]),
         "perf_unsupported_events": ", ".join(perf_unsupported) if perf_unsupported else "",
+        "strace_events_per_s_peak": time_series_peak_value(strace, ["time_series", "events_per_s"]),
+        "strace_events_per_s_peak_t_sec": time_series_peak_t_sec(strace, ["time_series", "events_per_s"]),
+        "strace_duration_ms_per_s_peak": time_series_peak_value(strace, ["time_series", "duration_ms_per_s"]),
+        "strace_duration_ms_per_s_peak_t_sec": time_series_peak_t_sec(strace, ["time_series", "duration_ms_per_s"]),
+        "strace_top_syscall": nested_get(strace, ["top_by_total_duration_sec", 0, "syscall"], ""),
+        "strace_top_syscall_total_duration_sec": nested_get(
+            strace,
+            ["top_by_total_duration_sec", 0, "total_duration_sec"],
+        ),
     }
+
+
+def build_peak_profile_row(summary: dict[str, Any]) -> dict[str, Any]:
+    collector = nested_get(summary, ["collector_analysis"], {})
+    return {
+        "scenario": summary["scenario"],
+        "docker_cpu_peak": time_series_peak_value(collector, ["docker_stats", "time_series", "cpu_percent_value"]),
+        "docker_cpu_peak_t_sec": time_series_peak_t_sec(
+            collector,
+            ["docker_stats", "time_series", "cpu_percent_value"],
+        ),
+        "docker_mem_peak": time_series_peak_value(collector, ["docker_stats", "time_series", "mem_percent_value"]),
+        "docker_mem_peak_t_sec": time_series_peak_t_sec(
+            collector,
+            ["docker_stats", "time_series", "mem_percent_value"],
+        ),
+        "pidstat_cpu_peak": time_series_peak_value(collector, ["pidstat", "sections", "cpu", "time_series", "pct_cpu"]),
+        "pidstat_cpu_peak_t_sec": time_series_peak_t_sec(
+            collector,
+            ["pidstat", "sections", "cpu", "time_series", "pct_cpu"],
+        ),
+        "pidstat_rss_peak": time_series_peak_value(
+            collector,
+            ["pidstat", "sections", "memory", "time_series", "rss_kib"],
+        ),
+        "pidstat_rss_peak_t_sec": time_series_peak_t_sec(
+            collector,
+            ["pidstat", "sections", "memory", "time_series", "rss_kib"],
+        ),
+        "iostat_pct_util_peak": time_series_peak_value(collector, ["iostat", "key_time_series", "pct_util"]),
+        "iostat_pct_util_peak_t_sec": time_series_peak_t_sec(collector, ["iostat", "key_time_series", "pct_util"]),
+        "iostat_w_await_peak": time_series_peak_value(collector, ["iostat", "key_time_series", "w_await"]),
+        "iostat_w_await_peak_t_sec": time_series_peak_t_sec(collector, ["iostat", "key_time_series", "w_await"]),
+        "vmstat_interrupts_peak": time_series_peak_value(collector, ["vmstat", "key_time_series", "interrupts_per_s"]),
+        "vmstat_interrupts_peak_t_sec": time_series_peak_t_sec(
+            collector,
+            ["vmstat", "key_time_series", "interrupts_per_s"],
+        ),
+        "vmstat_context_switches_peak": time_series_peak_value(
+            collector,
+            ["vmstat", "key_time_series", "context_switches_per_s"],
+        ),
+        "vmstat_context_switches_peak_t_sec": time_series_peak_t_sec(
+            collector,
+            ["vmstat", "key_time_series", "context_switches_per_s"],
+        ),
+        "perf_context_switches_peak": time_series_peak_value(
+            collector,
+            ["perf_stat", "key_time_series", "context_switches"],
+        ),
+        "perf_context_switches_peak_t_sec": time_series_peak_t_sec(
+            collector,
+            ["perf_stat", "key_time_series", "context_switches"],
+        ),
+    }
+
+
+def build_strace_top_table(summary: dict[str, Any], *, top_n: int = 5) -> pd.DataFrame | None:
+    strace = nested_get(summary, ["collector_analysis", "strace"], {})
+    top_items = nested_get(strace, ["top_by_total_duration_sec"], [])
+    if not isinstance(top_items, list) or not top_items:
+        return None
+    rows: list[dict[str, Any]] = []
+    for item in top_items[:top_n]:
+        if not isinstance(item, dict):
+            continue
+        rows.append(
+            {
+                "syscall": item.get("syscall", ""),
+                "count": item.get("count"),
+                "total_duration_sec": item.get("total_duration_sec"),
+            }
+        )
+    if not rows:
+        return None
+    return pd.DataFrame(rows)
 
 
 def save_dataframe(df: pd.DataFrame, output_path: Path) -> None:
@@ -235,6 +369,61 @@ def plot_dataframe(df: pd.DataFrame, title: str, ylabel: str, output_path: Path)
     plt.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=180)
+    plt.close(fig)
+
+
+def plot_time_series_panels(
+    *,
+    panel_specs: list[dict[str, Any]],
+    label_a: str,
+    label_b: str,
+    title: str,
+    output_path: Path,
+) -> None:
+    if plt is None:
+        raise RuntimeError("matplotlib is required to render figures")
+    usable_specs = [spec for spec in panel_specs if spec.get("left") or spec.get("right")]
+    if not usable_specs:
+        return
+    fig, axes = plt.subplots(
+        len(usable_specs),
+        1,
+        sharex=True,
+        figsize=(14, max(4.0, 3.4 * len(usable_specs))),
+        constrained_layout=True,
+    )
+    if len(usable_specs) == 1:
+        axes = [axes]
+    for ax, spec in zip(axes, usable_specs):
+        left_points = spec.get("left", [])
+        right_points = spec.get("right", [])
+        if left_points:
+            ax.plot(
+                [t for t, _ in left_points],
+                [v for _, v in left_points],
+                linewidth=1.4,
+                marker="o",
+                markersize=2.8,
+                label=label_a,
+            )
+        if right_points:
+            ax.plot(
+                [t for t, _ in right_points],
+                [v for _, v in right_points],
+                linewidth=1.4,
+                marker="o",
+                markersize=2.8,
+                linestyle="--",
+                label=label_b,
+            )
+        ax.set_ylabel(str(spec.get("ylabel", "")))
+        ax.set_title(str(spec.get("subtitle", "")))
+        ax.grid(True, alpha=0.25)
+        ax.legend()
+    axes[-1].set_xlabel("Time (s)")
+    axes[0].set_title(title)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=180, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -335,6 +524,13 @@ def build_pair_outputs(
         ]
     ).set_index("scenario")
     save_dataframe(profile_df, pair_dir / "tables" / "resource_profile.csv")
+    peak_df = pd.DataFrame(
+        [
+            build_peak_profile_row(left_summary),
+            build_peak_profile_row(right_summary),
+        ]
+    ).set_index("scenario")
+    save_dataframe(peak_df, pair_dir / "tables" / "timeline_peaks.csv")
 
     latency_overview_df = profile_df[
         ["total_mean_ms", "total_p50_ms", "total_p95_ms", "total_p99_ms"]
@@ -450,6 +646,10 @@ def build_pair_outputs(
             "perf_cpu_migrations_mean",
             "perf_page_faults_mean",
             "perf_unsupported_events",
+            "strace_events_per_s_peak",
+            "strace_duration_ms_per_s_peak",
+            "strace_top_syscall",
+            "strace_top_syscall_total_duration_sec",
         ]
     ].rename(
         columns={
@@ -461,8 +661,13 @@ def build_pair_outputs(
             "perf_cpu_migrations_mean": "perf_cpu_migrations",
             "perf_page_faults_mean": "perf_page_faults",
             "perf_unsupported_events": "perf_unsupported_events",
+            "strace_events_per_s_peak": "strace_events_per_s_peak",
+            "strace_duration_ms_per_s_peak": "strace_duration_ms_per_s_peak",
+            "strace_top_syscall": "strace_top_syscall",
+            "strace_top_syscall_total_duration_sec": "strace_top_syscall_total_duration_sec",
         }
     )
+    peak_table_df = peak_df
 
     table_map = {
         "latency_overview": latency_overview_df,
@@ -472,9 +677,17 @@ def build_pair_outputs(
         "process_metrics": process_df,
         "disk_metrics": disk_df,
         "system_metrics": system_df,
+        "timeline_peaks": peak_table_df,
     }
     for name, df in table_map.items():
         save_dataframe(df, pair_dir / "tables" / f"{name}.csv")
+
+    left_strace_top_df = build_strace_top_table(left_summary)
+    right_strace_top_df = build_strace_top_table(right_summary)
+    if left_strace_top_df is not None:
+        save_dataframe(left_strace_top_df, pair_dir / "tables" / f"{safe_slug(left_name)}_strace_top_syscalls.csv")
+    if right_strace_top_df is not None:
+        save_dataframe(right_strace_top_df, pair_dir / "tables" / f"{safe_slug(right_name)}_strace_top_syscalls.csv")
 
     if render_figures:
         plt.style.use("seaborn-v0_8-whitegrid")
@@ -509,6 +722,112 @@ def build_pair_outputs(
             label_b=right_name,
             output_path=pair_dir / "figures" / "latency_timeline.png",
         )
+        plot_time_series_panels(
+            panel_specs=[
+                {
+                    "subtitle": "Container CPU Percent",
+                    "ylabel": "percent",
+                    "left": time_series_points(left_summary, ["collector_analysis", "docker_stats", "time_series", "cpu_percent_value"]),
+                    "right": time_series_points(right_summary, ["collector_analysis", "docker_stats", "time_series", "cpu_percent_value"]),
+                },
+                {
+                    "subtitle": "Process CPU Percent",
+                    "ylabel": "percent",
+                    "left": time_series_points(left_summary, ["collector_analysis", "pidstat", "sections", "cpu", "time_series", "pct_cpu"]),
+                    "right": time_series_points(right_summary, ["collector_analysis", "pidstat", "sections", "cpu", "time_series", "pct_cpu"]),
+                },
+            ],
+            label_a=left_name,
+            label_b=right_name,
+            title="CPU Load Timeline",
+            output_path=pair_dir / "figures" / "cpu_load_timeline.png",
+        )
+        plot_time_series_panels(
+            panel_specs=[
+                {
+                    "subtitle": "Container Memory Percent",
+                    "ylabel": "percent",
+                    "left": time_series_points(left_summary, ["collector_analysis", "docker_stats", "time_series", "mem_percent_value"]),
+                    "right": time_series_points(right_summary, ["collector_analysis", "docker_stats", "time_series", "mem_percent_value"]),
+                },
+                {
+                    "subtitle": "Process RSS",
+                    "ylabel": "KiB",
+                    "left": time_series_points(left_summary, ["collector_analysis", "pidstat", "sections", "memory", "time_series", "rss_kib"]),
+                    "right": time_series_points(right_summary, ["collector_analysis", "pidstat", "sections", "memory", "time_series", "rss_kib"]),
+                },
+            ],
+            label_a=left_name,
+            label_b=right_name,
+            title="Memory Load Timeline",
+            output_path=pair_dir / "figures" / "mem_load_timeline.png",
+        )
+        plot_time_series_panels(
+            panel_specs=[
+                {
+                    "subtitle": "Container Block Write Throughput",
+                    "ylabel": "bytes/sec",
+                    "left": time_series_points(left_summary, ["collector_analysis", "docker_stats", "time_series", "block_write_bytes_per_s"]),
+                    "right": time_series_points(right_summary, ["collector_analysis", "docker_stats", "time_series", "block_write_bytes_per_s"]),
+                },
+                {
+                    "subtitle": "Disk Utilization (Busiest Device)",
+                    "ylabel": "percent",
+                    "left": time_series_points(left_summary, ["collector_analysis", "iostat", "key_time_series", "pct_util"]),
+                    "right": time_series_points(right_summary, ["collector_analysis", "iostat", "key_time_series", "pct_util"]),
+                },
+                {
+                    "subtitle": "Disk Write Await (Busiest Device)",
+                    "ylabel": "ms",
+                    "left": time_series_points(left_summary, ["collector_analysis", "iostat", "key_time_series", "w_await"]),
+                    "right": time_series_points(right_summary, ["collector_analysis", "iostat", "key_time_series", "w_await"]),
+                },
+            ],
+            label_a=left_name,
+            label_b=right_name,
+            title="I/O Load Timeline",
+            output_path=pair_dir / "figures" / "io_load_timeline.png",
+        )
+        plot_time_series_panels(
+            panel_specs=[
+                {
+                    "subtitle": "Interrupts per Second",
+                    "ylabel": "interrupts/sec",
+                    "left": time_series_points(left_summary, ["collector_analysis", "vmstat", "key_time_series", "interrupts_per_s"]),
+                    "right": time_series_points(right_summary, ["collector_analysis", "vmstat", "key_time_series", "interrupts_per_s"]),
+                },
+            ],
+            label_a=left_name,
+            label_b=right_name,
+            title="Interrupt Timeline",
+            output_path=pair_dir / "figures" / "interrupts_timeline.png",
+        )
+        plot_time_series_panels(
+            panel_specs=[
+                {
+                    "subtitle": "VM Context Switches",
+                    "ylabel": "switches/sec",
+                    "left": time_series_points(left_summary, ["collector_analysis", "vmstat", "key_time_series", "context_switches_per_s"]),
+                    "right": time_series_points(right_summary, ["collector_analysis", "vmstat", "key_time_series", "context_switches_per_s"]),
+                },
+                {
+                    "subtitle": "Process Voluntary Context Switches",
+                    "ylabel": "switches/sec",
+                    "left": time_series_points(left_summary, ["collector_analysis", "pidstat", "sections", "context_switch", "time_series", "cswch_per_s"]),
+                    "right": time_series_points(right_summary, ["collector_analysis", "pidstat", "sections", "context_switch", "time_series", "cswch_per_s"]),
+                },
+                {
+                    "subtitle": "perf context-switches",
+                    "ylabel": "events/sec",
+                    "left": time_series_points(left_summary, ["collector_analysis", "perf_stat", "key_time_series", "context_switches"]),
+                    "right": time_series_points(right_summary, ["collector_analysis", "perf_stat", "key_time_series", "context_switches"]),
+                },
+            ],
+            label_a=left_name,
+            label_b=right_name,
+            title="Context Switch Timeline",
+            output_path=pair_dir / "figures" / "context_switch_timeline.png",
+        )
 
     figure_paths = [
         ("Latency Overview", pair_dir / "figures" / "latency_overview.png"),
@@ -516,6 +835,11 @@ def build_pair_outputs(
         ("Latency Tail", pair_dir / "figures" / "latency_tail.png"),
         ("Container CPU and Memory", pair_dir / "figures" / "container_cpu_mem.png"),
         ("Latency Timeline", pair_dir / "figures" / "latency_timeline.png"),
+        ("CPU Load Timeline", pair_dir / "figures" / "cpu_load_timeline.png"),
+        ("Memory Load Timeline", pair_dir / "figures" / "mem_load_timeline.png"),
+        ("I/O Load Timeline", pair_dir / "figures" / "io_load_timeline.png"),
+        ("Interrupt Timeline", pair_dir / "figures" / "interrupts_timeline.png"),
+        ("Context Switch Timeline", pair_dir / "figures" / "context_switch_timeline.png"),
     ]
     figure_lines = [f"- ![{label}](figures/{path.name})" for label, path in figure_paths if path.exists()]
 
@@ -561,8 +885,30 @@ def build_pair_outputs(
             "",
             dataframe_to_markdown(system_df),
             "",
+            "**Timeline Peaks Table**",
+            "",
+            dataframe_to_markdown(peak_table_df),
+            "",
         ]
     )
+    if left_strace_top_df is not None:
+        pair_markdown += "\n".join(
+            [
+                f"**Top strace Syscalls: `{left_name}`**",
+                "",
+                dataframe_to_markdown(left_strace_top_df.set_index("syscall")),
+                "",
+            ]
+        )
+    if right_strace_top_df is not None:
+        pair_markdown += "\n".join(
+            [
+                f"**Top strace Syscalls: `{right_name}`**",
+                "",
+                dataframe_to_markdown(right_strace_top_df.set_index("syscall")),
+                "",
+            ]
+        )
     (pair_dir / "summary.md").write_text(pair_markdown + "\n", encoding="utf-8")
 
     return {

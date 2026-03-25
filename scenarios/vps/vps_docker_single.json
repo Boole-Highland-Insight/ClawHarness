@@ -38,6 +38,9 @@
       "enabled": true,
       "interval_sec": 1
     },
+    "strace": {
+      "enabled": true
+    },
     "iostat": {
       "enabled": true,
       "interval_sec": 1

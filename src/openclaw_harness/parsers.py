@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 from dataclasses import dataclass
 from datetime import datetime
+import math
 import re
 from pathlib import Path
 from statistics import fmean
@@ -159,6 +160,14 @@ def parse_collector_artifacts(
             perf_record.status.files.extend(path for path in parsed.files if path not in perf_record.status.files)
             analyses[parsed.name] = parsed.summary
 
+    strace = by_name.get("strace")
+    strace_log = output_dir / "strace.log"
+    if strace is not None and strace_log.exists():
+        parsed = parse_strace_log(strace_log, output_dir=output_dir)
+        if parsed is not None:
+            strace.status.files.extend(path for path in parsed.files if path not in strace.status.files)
+            analyses[parsed.name] = parsed.summary
+
     iostat = by_name.get("iostat")
     iostat_log = output_dir / "iostat.log"
     if iostat is not None and iostat_log.exists():
@@ -241,6 +250,16 @@ def parse_docker_stats_csv(path: Path, *, output_dir: Path) -> ParsedArtifact | 
             field: _metric_summary_entry(summary=metrics[field], **DOCKER_METRIC_META[field])
             for field in numeric_fields
         },
+        "time_series": {
+            field: _numeric_time_series_entry(
+                rows=rows,
+                value_field=field,
+                unit=DOCKER_METRIC_META.get(field, {}).get("unit", ""),
+                source_field=DOCKER_METRIC_META.get(field, {}).get("source_field", field),
+                timestamp_field="timestamp",
+            )
+            for field in numeric_fields
+        },
     }
     summary_path = output_dir / "docker_stats.summary.json"
     write_json(summary_path, summary)
@@ -314,6 +333,16 @@ def parse_pidstat_log(path: Path, *, output_dir: Path) -> ParsedArtifact | None:
                 summary=section_summaries[section.name]["metrics"][field],
                 unit=PIDSTAT_METRIC_META.get(field, {}).get("unit", ""),
                 source_field=field,
+            )
+            for field in section.numeric_fields
+        }
+        section_summaries[section.name]["time_series"] = {
+            field: _numeric_time_series_entry(
+                rows=rows,
+                value_field=field,
+                unit=PIDSTAT_METRIC_META.get(field, {}).get("unit", ""),
+                source_field=field,
+                index_step_sec=1.0,
             )
             for field in section.numeric_fields
         }
@@ -403,9 +432,20 @@ def parse_perf_stat_csv(path: Path, *, output_dir: Path) -> ParsedArtifact | Non
             )
             for event, metric_summary in metrics.items()
         },
+        "time_series": {
+            event: _numeric_time_series_entry(
+                rows=[row for row in rows if row.get("event") == event],
+                value_field="metric_value",
+                unit=_infer_perf_metric_unit(rows=rows, event=event),
+                source_field="metric_value",
+                elapsed_field="timestamp_sec",
+            )
+            for event in metrics
+        },
         "events": [
             {
                 "timestamp": row["timestamp"],
+                "timestamp_sec": row["timestamp_sec"],
                 "event": row["event"],
                 "counter_value": row["counter_value"],
                 "counter_unit": row["counter_unit"],
@@ -437,6 +477,36 @@ def parse_perf_stat_csv(path: Path, *, output_dir: Path) -> ParsedArtifact | Non
                 summary=key_metrics["page_faults"],
                 unit=_infer_perf_metric_unit(rows=rows, event="page-faults"),
                 source_field="metric_value",
+            ),
+        },
+        "key_time_series": {
+            "cache_misses": _numeric_time_series_entry(
+                rows=[row for row in rows if row.get("event") == "cache-misses"],
+                value_field="metric_value",
+                unit=_infer_perf_metric_unit(rows=rows, event="cache-misses"),
+                source_field="metric_value",
+                elapsed_field="timestamp_sec",
+            ),
+            "context_switches": _numeric_time_series_entry(
+                rows=[row for row in rows if row.get("event") == "context-switches"],
+                value_field="metric_value",
+                unit=_infer_perf_metric_unit(rows=rows, event="context-switches"),
+                source_field="metric_value",
+                elapsed_field="timestamp_sec",
+            ),
+            "cpu_migrations": _numeric_time_series_entry(
+                rows=[row for row in rows if row.get("event") == "cpu-migrations"],
+                value_field="metric_value",
+                unit=_infer_perf_metric_unit(rows=rows, event="cpu-migrations"),
+                source_field="metric_value",
+                elapsed_field="timestamp_sec",
+            ),
+            "page_faults": _numeric_time_series_entry(
+                rows=[row for row in rows if row.get("event") == "page-faults"],
+                value_field="metric_value",
+                unit=_infer_perf_metric_unit(rows=rows, event="page-faults"),
+                source_field="metric_value",
+                elapsed_field="timestamp_sec",
             ),
         },
         "unsupported_events": sorted(
@@ -475,6 +545,99 @@ def summarize_perf_record(*, perf_data: Path, perf_log: Path, output_dir: Path) 
     if perf_log.exists():
         files.append(str(perf_log))
     return ParsedArtifact(name="perf_record", files=files, summary=summary)
+
+
+def parse_strace_log(path: Path, *, output_dir: Path) -> ParsedArtifact | None:
+    rows: list[dict[str, Any]] = []
+    for raw_line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        row = _parse_strace_line(raw_line)
+        if row is not None:
+            rows.append(row)
+
+    if not rows:
+        return None
+
+    base_t_sec = min(float(row["t_sec"]) for row in rows if isinstance(row.get("t_sec"), (int, float)))
+    for row in rows:
+        if isinstance(row.get("t_sec"), (int, float)):
+            row["t_sec"] = float(row["t_sec"]) - base_t_sec
+
+    parsed_path = output_dir / "strace.parsed.csv"
+    _write_csv(parsed_path, rows)
+
+    by_syscall: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        syscall = str(row.get("syscall", "")).strip()
+        if syscall:
+            by_syscall.setdefault(syscall, []).append(row)
+
+    syscall_summary: dict[str, Any] = {}
+    for syscall, syscall_rows in by_syscall.items():
+        durations_sec = [
+            float(row["duration_sec"])
+            for row in syscall_rows
+            if isinstance(row.get("duration_sec"), (int, float))
+        ]
+        duration_summary = _summarize_present_numeric(durations_sec)
+        duration_ms_summary = (
+            summarize_ms([duration * 1000.0 for duration in durations_sec]) if durations_sec else {}
+        )
+        syscall_summary[syscall] = {
+            "count": len(syscall_rows),
+            "duration_sec": duration_summary,
+            "duration_ms": duration_ms_summary,
+        }
+
+    top_by_total_duration = sorted(
+        (
+            {
+                "syscall": syscall,
+                "count": details["count"],
+                "total_duration_sec": sum(
+                    float(row["duration_sec"])
+                    for row in by_syscall.get(syscall, [])
+                    if isinstance(row.get("duration_sec"), (int, float))
+                ),
+            }
+            for syscall, details in syscall_summary.items()
+        ),
+        key=lambda item: item["total_duration_sec"],
+        reverse=True,
+    )[:10]
+
+    bucket_counts: dict[int, float] = {}
+    bucket_duration_ms: dict[int, float] = {}
+    for row in rows:
+        t_sec = row.get("t_sec")
+        duration_sec = row.get("duration_sec")
+        if not isinstance(t_sec, (int, float)):
+            continue
+        bucket = int(math.floor(float(t_sec)))
+        bucket_counts[bucket] = bucket_counts.get(bucket, 0.0) + 1.0
+        if isinstance(duration_sec, (int, float)):
+            bucket_duration_ms[bucket] = bucket_duration_ms.get(bucket, 0.0) + (float(duration_sec) * 1000.0)
+
+    summary = {
+        "raw_log": str(path),
+        "rows": len(rows),
+        "syscalls": syscall_summary,
+        "top_by_total_duration_sec": top_by_total_duration,
+        "time_series": {
+            "events_per_s": _bucket_time_series_entry(
+                bucket_values=bucket_counts,
+                unit="events/sec",
+                source_field="count(events)",
+            ),
+            "duration_ms_per_s": _bucket_time_series_entry(
+                bucket_values=bucket_duration_ms,
+                unit="ms/sec",
+                source_field="sum(duration_sec)*1000",
+            ),
+        },
+    }
+    summary_path = output_dir / "strace.summary.json"
+    write_json(summary_path, summary)
+    return ParsedArtifact(name="strace", files=[str(parsed_path), str(summary_path)], summary=summary)
 
 
 def parse_iostat_log(path: Path, *, output_dir: Path) -> ParsedArtifact | None:
@@ -534,6 +697,16 @@ def parse_iostat_log(path: Path, *, output_dir: Path) -> ParsedArtifact | None:
                 )
                 for metric in metric_names
             },
+            "time_series": {
+                metric: _numeric_time_series_entry(
+                    rows=device_rows,
+                    value_field=metric,
+                    unit=IOSTAT_METRIC_META.get(metric, {}).get("unit", ""),
+                    source_field=metric,
+                    index_step_sec=1.0,
+                )
+                for metric in metric_names
+            },
         }
         util_mean = float(metrics.get("pct_util", {}).get("mean", 0.0))
         if util_mean > busiest_util_mean:
@@ -585,6 +758,14 @@ def parse_iostat_log(path: Path, *, output_dir: Path) -> ParsedArtifact | None:
                 unit=IOSTAT_METRIC_META["wkb_s"]["unit"],
                 source_field="wkb_s",
             ),
+        },
+        "key_time_series": {
+            "pct_util": devices_summary.get(busiest_device, {}).get("time_series", {}).get("pct_util", {}),
+            "r_await": devices_summary.get(busiest_device, {}).get("time_series", {}).get("r_await", {}),
+            "w_await": devices_summary.get(busiest_device, {}).get("time_series", {}).get("w_await", {}),
+            "f_await": devices_summary.get(busiest_device, {}).get("time_series", {}).get("f_await", {}),
+            "aqu_sz": devices_summary.get(busiest_device, {}).get("time_series", {}).get("aqu_sz", {}),
+            "wkb_s": devices_summary.get(busiest_device, {}).get("time_series", {}).get("wkb_s", {}),
         },
     }
     summary_path = output_dir / "iostat.summary.json"
@@ -653,6 +834,16 @@ def parse_vmstat_log(path: Path, *, output_dir: Path) -> ParsedArtifact | None:
             )
             for metric in metric_names
         },
+        "time_series": {
+            metric: _numeric_time_series_entry(
+                rows=rows,
+                value_field=metric,
+                unit=VMSTAT_METRIC_META.get(metric, {}).get("unit", ""),
+                source_field=metric,
+                index_step_sec=1.0,
+            )
+            for metric in metric_names
+        },
         "key_metrics": key_metrics,
         "key_metric_summaries": {
             "interrupts_per_s": _metric_summary_entry(
@@ -674,6 +865,36 @@ def parse_vmstat_log(path: Path, *, output_dir: Path) -> ParsedArtifact | None:
                 summary=key_metrics["run_queue"],
                 unit="processes",
                 source_field="r",
+            ),
+        },
+        "key_time_series": {
+            "interrupts_per_s": _numeric_time_series_entry(
+                rows=rows,
+                value_field="in",
+                unit="interrupts/sec",
+                source_field="in",
+                index_step_sec=1.0,
+            ),
+            "context_switches_per_s": _numeric_time_series_entry(
+                rows=rows,
+                value_field="cs",
+                unit="switches/sec",
+                source_field="cs",
+                index_step_sec=1.0,
+            ),
+            "blocked_processes": _numeric_time_series_entry(
+                rows=rows,
+                value_field="b",
+                unit="processes",
+                source_field="b",
+                index_step_sec=1.0,
+            ),
+            "run_queue": _numeric_time_series_entry(
+                rows=rows,
+                value_field="r",
+                unit="processes",
+                source_field="r",
+                index_step_sec=1.0,
             ),
         },
     }
@@ -738,15 +959,16 @@ def _parse_pidstat_row(
 
 
 def _parse_pidstat_combined_row(line: str, *, combined_header: list[str]) -> dict[str, Any] | None:
-    tokens = line.split()
-    if len(tokens) < len(combined_header):
-        return None
-    sample_time = tokens[0]
-    values = tokens[1 : len(combined_header) - 1]
-    command = " ".join(tokens[len(combined_header) - 1 :])
-    if not command:
+    sample_time, tokens = _extract_pidstat_tokens(line)
+    if not tokens:
         return None
     header_fields = combined_header[1:-1]
+    if len(tokens) < len(header_fields):
+        return None
+    values = tokens[: len(header_fields)]
+    command = " ".join(tokens[len(header_fields) :])
+    if not command:
+        return None
     field_map = {
         "%usr": "pct_usr",
         "%system": "pct_system",
@@ -793,6 +1015,7 @@ def _parse_perf_stat_row(cells: list[str]) -> dict[str, Any] | None:
         return None
     return {
         "timestamp": timestamp,
+        "timestamp_sec": _parse_number_maybe(timestamp),
         "counter_value_raw": counter_value_raw,
         "counter_value": _parse_number_maybe(counter_value_raw),
         "counter_unit": counter_unit,
@@ -943,6 +1166,74 @@ def _metric_summary_entry(
     }
 
 
+def _numeric_time_series_entry(
+    *,
+    rows: list[dict[str, Any]],
+    value_field: str,
+    unit: str,
+    source_field: str,
+    timestamp_field: str | None = None,
+    elapsed_field: str | None = None,
+    index_step_sec: float | None = None,
+) -> dict[str, Any]:
+    points: list[dict[str, float]] = []
+    base_time: datetime | None = None
+    for index, row in enumerate(rows):
+        value = row.get(value_field)
+        if not isinstance(value, (int, float)):
+            continue
+        t_sec: float | None = None
+        if timestamp_field is not None:
+            parsed_time = _parse_datetime_maybe(str(row.get(timestamp_field, "")))
+            if parsed_time is not None:
+                if base_time is None:
+                    base_time = parsed_time
+                t_sec = float((parsed_time - base_time).total_seconds())
+        elif elapsed_field is not None:
+            elapsed = row.get(elapsed_field)
+            if isinstance(elapsed, (int, float)):
+                t_sec = float(elapsed)
+        elif index_step_sec is not None:
+            t_sec = float(index) * index_step_sec
+        if t_sec is None:
+            continue
+        points.append({"t_sec": t_sec, "value": float(value)})
+    return _time_series_entry(points=points, unit=unit, source_field=source_field)
+
+
+def _bucket_time_series_entry(
+    *,
+    bucket_values: dict[int, float],
+    unit: str,
+    source_field: str,
+) -> dict[str, Any]:
+    points = [
+        {"t_sec": float(bucket), "value": float(value)}
+        for bucket, value in sorted(bucket_values.items(), key=lambda item: item[0])
+    ]
+    return _time_series_entry(points=points, unit=unit, source_field=source_field)
+
+
+def _time_series_entry(*, points: list[dict[str, float]], unit: str, source_field: str) -> dict[str, Any]:
+    peak = _peak_from_points(points)
+    return {
+        "points": points,
+        "peak": peak,
+        "unit": unit,
+        "source_field": source_field,
+    }
+
+
+def _peak_from_points(points: list[dict[str, float]]) -> dict[str, float]:
+    if not points:
+        return {}
+    peak_point = max(points, key=lambda point: float(point.get("value", float("-inf"))))
+    return {
+        "t_sec": float(peak_point["t_sec"]),
+        "value": float(peak_point["value"]),
+    }
+
+
 def _infer_perf_metric_unit(*, rows: list[dict[str, Any]], event: str) -> str:
     for row in rows:
         if row.get("event") != event:
@@ -951,6 +1242,46 @@ def _infer_perf_metric_unit(*, rows: list[dict[str, Any]], event: str) -> str:
         if unit:
             return unit
     return PERF_EVENT_UNITS.get(event, "")
+
+
+def _parse_strace_line(line: str) -> dict[str, Any] | None:
+    stripped = line.strip()
+    if not stripped or stripped.startswith("strace:"):
+        return None
+    if "unfinished ..." in stripped or "<... " in stripped and " resumed>" in stripped:
+        return None
+    duration_match = re.search(r"<([0-9]+(?:\.[0-9]+)?)>\s*$", stripped)
+    if duration_match is None:
+        return None
+    timestamp_match = re.match(
+        r"^(?:\[pid\s+(?P<pid>\d+)\]\s+)?(?P<ts>\d{2}:\d{2}:\d{2}(?:\.\d+)?)\s+(?P<body>.+?)\s*<(?P<duration>[0-9]+(?:\.[0-9]+)?)>\s*$",
+        stripped,
+    )
+    if timestamp_match is None:
+        return None
+    body = timestamp_match.group("body").strip()
+    if body.startswith("---") or body.startswith("+++"):
+        return None
+    syscall_match = re.match(r"(?P<syscall>[a-zA-Z0-9_]+)\(", body)
+    if syscall_match is None:
+        return None
+    timestamp_text = timestamp_match.group("ts")
+    duration_sec = float(timestamp_match.group("duration"))
+    t_sec = _parse_hhmmss_to_seconds(timestamp_text)
+    return {
+        "pid": _parse_number_maybe(timestamp_match.group("pid") or ""),
+        "timestamp": timestamp_text,
+        "t_sec": t_sec,
+        "syscall": syscall_match.group("syscall"),
+        "duration_sec": duration_sec,
+        "duration_ms": duration_sec * 1000.0,
+        "raw_line": stripped,
+    }
+
+
+def _parse_hhmmss_to_seconds(value: str) -> float:
+    hour_text, minute_text, second_text = value.split(":", 2)
+    return (int(hour_text) * 3600.0) + (int(minute_text) * 60.0) + float(second_text)
 
 
 def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
