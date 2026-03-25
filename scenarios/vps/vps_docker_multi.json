@@ -1,8 +1,8 @@
 {
-  "name": "vps-docker-multi",
+  "name": "vps-docker-multi-task-00-500-full",
   "runtime": {
     "kind": "docker",
-    "image": "openclaw:bench-vps",
+    "image": "openclaw:bench-local",
     "container_name_base": "openclaw-bench-vps",
     "host": "127.0.0.1",
     "host_port": 19189,
@@ -17,16 +17,16 @@
   "client": {
     "role": "operator",
     "message": "/context list",
-    "session_prefix": "vps-docker-multi",
+    "session_prefix": "vps-docker-multi-task-00-500-full",
     "session_mode": "per_worker",
     "history_limit": 20,
     "wait_timeout_ms": 15000,
     "send_timeout_ms": 15000
   },
   "load": {
-    "concurrency": 8,
-    "requests_per_worker": 4,
-    "worker_stagger_ms": 100,
+    "concurrency": 20,
+    "requests_per_worker": 25,
+    "worker_stagger_ms": 150,
     "request_pause_ms": 0
   },
   "collectors": {
@@ -38,11 +38,18 @@
       "enabled": true,
       "interval_sec": 1
     },
+    "iostat": {
+      "enabled": true,
+      "interval_sec": 1
+    },
     "perf_stat": {
       "enabled": true
     },
     "perf_record": {
-      "enabled": false
+      "enabled": true
     }
+  },
+  "artifacts": {
+    "summary_only": false
   }
 }

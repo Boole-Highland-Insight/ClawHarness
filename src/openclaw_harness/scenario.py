@@ -27,6 +27,19 @@ class PidstatConfig:
 class PerfStatConfig:
     enabled: bool = True
     interval_ms: int = 1000
+    events: list[str] = field(
+        default_factory=lambda: [
+            "context-switches",
+            "cpu-migrations",
+            "page-faults",
+            "minor-faults",
+            "major-faults",
+            "cache-references",
+            "cache-misses",
+            "cpu-clock",
+            "task-clock",
+        ],
+    )
 
 
 @dataclass(slots=True)
@@ -41,11 +54,18 @@ class CollectorsConfig:
     perf_stat: PerfStatConfig = field(default_factory=PerfStatConfig)
     perf_record: PerfRecordConfig = field(default_factory=PerfRecordConfig)
     iostat: "IostatConfig" = field(default_factory=lambda: IostatConfig())
+    vmstat: "VmstatConfig" = field(default_factory=lambda: VmstatConfig())
 
 
 @dataclass(slots=True)
 class IostatConfig:
     enabled: bool = False
+    interval_sec: int = 1
+
+
+@dataclass(slots=True)
+class VmstatConfig:
+    enabled: bool = True
     interval_sec: int = 1
 
 
@@ -143,6 +163,7 @@ def load_scenario(path: Path) -> ScenarioConfig:
     _merge_dataclass(collector_raw.get("perf_stat"), scenario.collectors.perf_stat)
     _merge_dataclass(collector_raw.get("perf_record"), scenario.collectors.perf_record)
     _merge_dataclass(collector_raw.get("iostat"), scenario.collectors.iostat)
+    _merge_dataclass(collector_raw.get("vmstat"), scenario.collectors.vmstat)
     if scenario.client.session_mode not in SESSION_MODES:
         raise ValueError(
             f"invalid session_mode={scenario.client.session_mode!r}; expected one of {SESSION_MODES}",

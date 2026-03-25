@@ -199,6 +199,8 @@ def build_preflight_payload(
             target = runtime_info.container_name or "container unavailable"
         elif collector.status.name in {"pidstat", "perf_stat", "perf_record"}:
             target = str(runtime_info.host_pid) if runtime_info.host_pid is not None else "host PID unavailable"
+        elif collector.status.name == "vmstat":
+            target = "host system"
         collector_targets.append(
             {
                 "name": collector.status.name,
@@ -363,6 +365,9 @@ async def run_scenario(
                 "perf_stat.summary.json",
                 "pidstat.log",
                 "iostat.log",
+                "vmstat.log",
+                "vmstat.parsed.csv",
+                "vmstat.summary.json",
             },
         )
     return run_dir

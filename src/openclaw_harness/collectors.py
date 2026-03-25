@@ -13,15 +13,6 @@ from .scenario import CollectorsConfig
 from .utils import command_exists, iso_now, run_command
 
 
-PERF_STAT_EVENTS = [
-    "context-switches",
-    "cpu-migrations",
-    "page-faults",
-    "cache-references",
-    "cache-misses",
-]
-
-
 @dataclass(slots=True)
 class CollectorStatus:
     name: str
@@ -244,7 +235,7 @@ def build_collectors(
                 str(config.perf_stat.interval_ms),
                 "-x,",
                 "-e",
-                ",".join(PERF_STAT_EVENTS),
+                ",".join(config.perf_stat.events),
                 "-p",
                 str(host_pid),
                 "-o",
@@ -290,6 +281,15 @@ def build_collectors(
             enabled=config.iostat.enabled,
             command=["iostat", "-d", "-x", "-y", "-k", str(config.iostat.interval_sec)],
             output_path=iostat_output,
+        ),
+    )
+    vmstat_output = output_dir / "vmstat.log"
+    collectors.append(
+        BackgroundCommandCollector(
+            name="vmstat",
+            enabled=config.vmstat.enabled,
+            command=["vmstat", "-n", str(config.vmstat.interval_sec)],
+            output_path=vmstat_output,
         ),
     )
     return collectors

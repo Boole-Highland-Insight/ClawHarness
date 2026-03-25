@@ -103,6 +103,14 @@ def parse_collector_artifacts(
             iostat.status.files.extend(path for path in parsed.files if path not in iostat.status.files)
             analyses[parsed.name] = parsed.summary
 
+    vmstat = by_name.get("vmstat")
+    vmstat_log = output_dir / "vmstat.log"
+    if vmstat is not None and vmstat_log.exists():
+        parsed = parse_vmstat_log(vmstat_log, output_dir=output_dir)
+        if parsed is not None:
+            vmstat.status.files.extend(path for path in parsed.files if path not in vmstat.status.files)
+            analyses[parsed.name] = parsed.summary
+
     return analyses
 
 
@@ -268,7 +276,7 @@ def parse_perf_stat_csv(path: Path, *, output_dir: Path) -> ParsedArtifact | Non
         "raw_csv": str(path),
         "rows": len(rows),
         "metrics": {
-            event: summarize_ms(
+            event: _summarize_numeric(
                 [
                     float(row["counter_value"])
                     for row in rows
@@ -290,6 +298,43 @@ def parse_perf_stat_csv(path: Path, *, output_dir: Path) -> ParsedArtifact | Non
             }
             for row in rows
         ],
+        "key_metrics": {
+            "cache_misses": _summarize_numeric(
+                [
+                    float(row["counter_value"])
+                    for row in rows
+                    if row.get("event") == "cache-misses" and isinstance(row.get("counter_value"), (int, float))
+                ]
+            ),
+            "context_switches": _summarize_numeric(
+                [
+                    float(row["counter_value"])
+                    for row in rows
+                    if row.get("event") == "context-switches" and isinstance(row.get("counter_value"), (int, float))
+                ]
+            ),
+            "cpu_migrations": _summarize_numeric(
+                [
+                    float(row["counter_value"])
+                    for row in rows
+                    if row.get("event") == "cpu-migrations" and isinstance(row.get("counter_value"), (int, float))
+                ]
+            ),
+            "page_faults": _summarize_numeric(
+                [
+                    float(row["counter_value"])
+                    for row in rows
+                    if row.get("event") == "page-faults" and isinstance(row.get("counter_value"), (int, float))
+                ]
+            ),
+        },
+        "unsupported_events": sorted(
+            {
+                str(row["event"])
+                for row in rows
+                if isinstance(row.get("counter_value"), str) and row.get("counter_value") == "<not supported>"
+            }
+        ),
     }
     summary_path = output_dir / "perf_stat.summary.json"
     write_json(summary_path, summary)
@@ -381,10 +426,77 @@ def parse_iostat_log(path: Path, *, output_dir: Path) -> ParsedArtifact | None:
         "rows": len(rows),
         "devices": devices_summary,
         "busiest_device_by_util_mean": busiest_device,
+        "key_metrics": {
+            "busiest_device": busiest_device,
+            "pct_util": devices_summary.get(busiest_device, {}).get("metrics", {}).get("pct_util", {}),
+            "await": devices_summary.get(busiest_device, {}).get("metrics", {}).get("await", {}),
+            "r_await": devices_summary.get(busiest_device, {}).get("metrics", {}).get("r_await", {}),
+            "w_await": devices_summary.get(busiest_device, {}).get("metrics", {}).get("w_await", {}),
+            "aqu_sz": devices_summary.get(busiest_device, {}).get("metrics", {}).get("aqu_sz", {}),
+            "wkb_s": devices_summary.get(busiest_device, {}).get("metrics", {}).get("wkb_s", {}),
+        },
     }
     summary_path = output_dir / "iostat.summary.json"
     write_json(summary_path, summary)
     return ParsedArtifact(name="iostat", files=[str(parsed_path), str(summary_path)], summary=summary)
+
+
+def parse_vmstat_log(path: Path, *, output_dir: Path) -> ParsedArtifact | None:
+    rows: list[dict[str, Any]] = []
+    header: list[str] | None = None
+
+    for raw_line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("procs ") or stripped.startswith("procs\t"):
+            continue
+        if stripped.startswith("r ") or stripped.startswith("r\t"):
+            header = stripped.split()
+            continue
+        if header is None:
+            continue
+        tokens = stripped.split()
+        if len(tokens) != len(header):
+            continue
+        row = {
+            _normalize_metric_key(key): _parse_number_maybe(value)
+            for key, value in zip(header, tokens, strict=True)
+        }
+        rows.append(row)
+
+    if not rows:
+        return None
+
+    parsed_path = output_dir / "vmstat.parsed.csv"
+    _write_csv(parsed_path, rows)
+
+    metric_names = [key for key in rows[0].keys()]
+    summary = {
+        "raw_log": str(path),
+        "rows": len(rows),
+        "metrics": {
+            metric: _summarize_numeric(
+                [float(row[metric]) for row in rows if isinstance(row.get(metric), (int, float))]
+            )
+            for metric in metric_names
+        },
+        "key_metrics": {
+            "interrupts_per_s": _summarize_numeric(
+                [float(row["in"]) for row in rows if isinstance(row.get("in"), (int, float))]
+            ),
+            "context_switches_per_s": _summarize_numeric(
+                [float(row["cs"]) for row in rows if isinstance(row.get("cs"), (int, float))]
+            ),
+            "blocked_processes": _summarize_numeric(
+                [float(row["b"]) for row in rows if isinstance(row.get("b"), (int, float))]
+            ),
+            "run_queue": _summarize_numeric(
+                [float(row["r"]) for row in rows if isinstance(row.get("r"), (int, float))]
+            ),
+        },
+    }
+    summary_path = output_dir / "vmstat.summary.json"
+    write_json(summary_path, summary)
+    return ParsedArtifact(name="vmstat", files=[str(parsed_path), str(summary_path)], summary=summary)
 
 
 def derive_healthcheck_url(ws_url: str) -> str:

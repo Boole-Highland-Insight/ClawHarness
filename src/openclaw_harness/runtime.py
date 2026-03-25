@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 from dataclasses import asdict, dataclass
@@ -59,7 +60,7 @@ class DockerRuntimeManager:
         self.workspace_dir = self.runtime_dir / "workspace"
         self.image_build_log = self.runtime_dir / "docker-build.log"
         self.container_log = self.runtime_dir / "docker-logs.txt"
-        repo_root = Path(config.repo_root) if config.repo_root else Path(__file__).resolve().parents[4]
+        repo_root = Path(config.repo_root) if config.repo_root else Path(__file__).resolve().parents[2]
         self.repo_root = repo_root.resolve()
         self.dockerfile = (self.repo_root / config.dockerfile).resolve()
         self.container_id: str | None = None
@@ -70,6 +71,7 @@ class DockerRuntimeManager:
         self.workspace_dir.mkdir(parents=True, exist_ok=True)
         self._seed_runtime_config()
         self._seed_device_pairing()
+        self._prepare_bind_mount_permissions()
         self._ensure_image()
         run_command(["docker", "rm", "-f", self.container_name], check=False)
         docker_args = [
@@ -149,6 +151,13 @@ class DockerRuntimeManager:
         )
         if not should_build:
             return
+        if not self.dockerfile.is_file():
+            raise RuntimeError(
+                "docker build failed\n"
+                f"Dockerfile not found: {self.dockerfile}\n"
+                f"repo_root: {self.repo_root}\n"
+                "Set runtime.repo_root and runtime.dockerfile in the scenario if the gateway repo lives elsewhere."
+            )
         self.image_build_log.parent.mkdir(parents=True, exist_ok=True)
         build = run_command(
             [
@@ -258,6 +267,16 @@ class DockerRuntimeManager:
             encoding="utf-8",
         )
         (devices_dir / "pending.json").write_text("{}\n", encoding="utf-8")
+
+    def _prepare_bind_mount_permissions(self) -> None:
+        # The gateway image runs as the non-root "node" user, so bind-mounted
+        # config/workspace paths created by the host must be writable.
+        for root, dirs, files in os.walk(self.runtime_dir):
+            Path(root).chmod(0o777)
+            for name in dirs:
+                (Path(root) / name).chmod(0o777)
+            for name in files:
+                (Path(root) / name).chmod(0o666)
 
 
 class HostDirectRuntimeManager(BaseRuntimeManager):

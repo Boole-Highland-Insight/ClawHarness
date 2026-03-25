@@ -1,0 +1,3 @@
+scenario,cpu_percent,rss_kib,kb_wr_per_s,iodelay,cswch_per_s,nvcswch_per_s
+vps-docker-single-task-00-500-full,0.0,980.0,0.0,0.0,0.0,1.0
+vps-docker-multi-task-00-500-full,0.0,980.0,0.0,0.0,0.0,1.0

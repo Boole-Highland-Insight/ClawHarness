@@ -23,6 +23,7 @@ def probe_environment(*, scenario: ScenarioConfig, output_dir: Path) -> dict[str
         "docker": _probe_tool("docker", None),
         "pidstat": _probe_tool("pidstat", ["pidstat", "-V"]),
         "iostat": _probe_tool("iostat", ["iostat", "-V"]),
+        "vmstat": _probe_tool("vmstat", ["vmstat", "-V"]),
         "perf": _probe_tool("perf", ["perf", "--version"]),
     }
     install_hints = _build_install_hints(
@@ -58,6 +59,7 @@ def probe_environment(*, scenario: ScenarioConfig, output_dir: Path) -> dict[str
                 "docker_stats": scenario.collectors.docker_stats.enabled,
                 "pidstat": scenario.collectors.pidstat.enabled,
                 "iostat": scenario.collectors.iostat.enabled,
+                "vmstat": scenario.collectors.vmstat.enabled,
                 "perf_stat": scenario.collectors.perf_stat.enabled,
                 "perf_record": scenario.collectors.perf_record.enabled,
             },
@@ -168,6 +170,10 @@ def _build_recommended_collectors(
             "enabled": True,
             "reason": "recommended when you want disk await, queue depth, and %util evidence",
         },
+        "vmstat": {
+            "enabled": True,
+            "reason": "recommended when you want system-wide interrupts and context-switch activity",
+        },
         "perf_stat": {
             "enabled": perf_enabled,
             "reason": perf_reason,
@@ -187,6 +193,8 @@ def _build_notes(*, is_wsl: bool, tools: dict[str, dict[str, Any]]) -> list[str]
         notes.append(tools["pidstat"]["detail"] or "pidstat is not usable on this host.")
     if not tools["iostat"]["usable"]:
         notes.append(tools["iostat"]["detail"] or "iostat is not usable on this host.")
+    if not tools["vmstat"]["usable"]:
+        notes.append(tools["vmstat"]["detail"] or "vmstat is not usable on this host.")
     if not tools["perf"]["usable"]:
         notes.append(tools["perf"]["detail"] or "perf is not usable on this host.")
     return notes
