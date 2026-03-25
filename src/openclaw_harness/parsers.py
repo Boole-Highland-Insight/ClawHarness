@@ -1248,13 +1248,18 @@ def _parse_strace_line(line: str) -> dict[str, Any] | None:
     stripped = line.strip()
     if not stripped or stripped.startswith("strace:"):
         return None
-    if "unfinished ..." in stripped or "<... " in stripped and " resumed>" in stripped:
+    if "strace: Process" in stripped:
+        stripped = stripped.split("strace: Process", 1)[0].rstrip()
+    if not stripped:
         return None
+    if "unfinished ..." in stripped or "<... " in stripped and " resumed>" in stripped:
+        if "<... " not in stripped or " resumed>" not in stripped:
+            return None
     duration_match = re.search(r"<([0-9]+(?:\.[0-9]+)?)>\s*$", stripped)
     if duration_match is None:
         return None
     timestamp_match = re.match(
-        r"^(?:\[pid\s+(?P<pid>\d+)\]\s+)?(?P<ts>\d{2}:\d{2}:\d{2}(?:\.\d+)?)\s+(?P<body>.+?)\s*<(?P<duration>[0-9]+(?:\.[0-9]+)?)>\s*$",
+        r"^(?:(?:\[pid\s+)?(?P<pid>\d+)\]?\s+)?(?P<ts>\d{2}:\d{2}:\d{2}(?:\.\d+)?)\s+(?P<body>.+?)\s*<(?P<duration>[0-9]+(?:\.[0-9]+)?)>\s*$",
         stripped,
     )
     if timestamp_match is None:
@@ -1262,8 +1267,14 @@ def _parse_strace_line(line: str) -> dict[str, Any] | None:
     body = timestamp_match.group("body").strip()
     if body.startswith("---") or body.startswith("+++"):
         return None
-    syscall_match = re.match(r"(?P<syscall>[a-zA-Z0-9_]+)\(", body)
-    if syscall_match is None:
+    syscall_match = re.match(
+        r"(?:(?P<normal>[a-zA-Z0-9_]+)\(|<\.\.\.\s+(?P<resumed>[a-zA-Z0-9_]+)\s+resumed>\))",
+        body,
+    )
+    syscall = ""
+    if syscall_match is not None:
+        syscall = str(syscall_match.group("normal") or syscall_match.group("resumed") or "")
+    if not syscall:
         return None
     timestamp_text = timestamp_match.group("ts")
     duration_sec = float(timestamp_match.group("duration"))
@@ -1272,7 +1283,7 @@ def _parse_strace_line(line: str) -> dict[str, Any] | None:
         "pid": _parse_number_maybe(timestamp_match.group("pid") or ""),
         "timestamp": timestamp_text,
         "t_sec": t_sec,
-        "syscall": syscall_match.group("syscall"),
+        "syscall": syscall,
         "duration_sec": duration_sec,
         "duration_ms": duration_sec * 1000.0,
         "raw_line": stripped,

@@ -1,0 +1,5 @@
+,syscall,count,total_duration_sec
+0,futex,127019,1063.719129
+1,read,156195,3.421501
+2,write,82063,2.412637
+3,accept4,20,0.00058

@@ -828,6 +828,26 @@ def build_pair_outputs(
             title="Context Switch Timeline",
             output_path=pair_dir / "figures" / "context_switch_timeline.png",
         )
+        plot_time_series_panels(
+            panel_specs=[
+                {
+                    "subtitle": "strace Events per Second",
+                    "ylabel": "events/sec",
+                    "left": time_series_points(left_summary, ["collector_analysis", "strace", "time_series", "events_per_s"]),
+                    "right": time_series_points(right_summary, ["collector_analysis", "strace", "time_series", "events_per_s"]),
+                },
+                {
+                    "subtitle": "strace Duration per Second",
+                    "ylabel": "ms/sec",
+                    "left": time_series_points(left_summary, ["collector_analysis", "strace", "time_series", "duration_ms_per_s"]),
+                    "right": time_series_points(right_summary, ["collector_analysis", "strace", "time_series", "duration_ms_per_s"]),
+                },
+            ],
+            label_a=left_name,
+            label_b=right_name,
+            title="strace Timeline",
+            output_path=pair_dir / "figures" / "strace_timeline.png",
+        )
 
     figure_paths = [
         ("Latency Overview", pair_dir / "figures" / "latency_overview.png"),
@@ -840,6 +860,7 @@ def build_pair_outputs(
         ("I/O Load Timeline", pair_dir / "figures" / "io_load_timeline.png"),
         ("Interrupt Timeline", pair_dir / "figures" / "interrupts_timeline.png"),
         ("Context Switch Timeline", pair_dir / "figures" / "context_switch_timeline.png"),
+        ("strace Timeline", pair_dir / "figures" / "strace_timeline.png"),
     ]
     figure_lines = [f"- ![{label}](figures/{path.name})" for label, path in figure_paths if path.exists()]
 
@@ -892,7 +913,7 @@ def build_pair_outputs(
         ]
     )
     if left_strace_top_df is not None:
-        pair_markdown += "\n".join(
+        pair_markdown += "\n" + "\n".join(
             [
                 f"**Top strace Syscalls: `{left_name}`**",
                 "",
@@ -901,7 +922,7 @@ def build_pair_outputs(
             ]
         )
     if right_strace_top_df is not None:
-        pair_markdown += "\n".join(
+        pair_markdown += "\n" + "\n".join(
             [
                 f"**Top strace Syscalls: `{right_name}`**",
                 "",
