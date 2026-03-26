@@ -706,3 +706,109 @@
 - 这个排队和 session manager 的共享锁 + 目录/索引更新链路高度相关
 
 如果你要，我下一步可以继续把 `sessions.json.<uuid>.tmp` 和 `sessions.json.lock` 各自再画成单独双图，并把 session `.jsonl` 文件访问也单独归一类。
+---
+可以这么总结，但我会稍微说得更准确一点：
+
+`multi` 更慢，主因很像是 **session manager 相关的共享串行化 + session 状态目录/索引文件更新链路在并发下被放大**，而不只是“单纯扫目录”。
+
+目前证据支持这几个点：
+
+- 有共享锁迹象  
+  `sessions.json.lock` 明确存在，而且 multi 更重，见 [summary.md](/root/client-harness/res/vps-docker-single-task-00-500-full-vs-vps-docker-multi-task-00-500-10x50/summary.md#L117)。
+- 有全局 session 索引更新链  
+  `sessions.json`、`sessions.json.<uuid>.tmp`、`sessions.json.lock` 这套路径一起出现，像典型的“拿锁 -> 写 tmp -> 更新索引 -> 释放锁”。
+- `sessions/` 目录本身的解析/realpath 在 multi 下涨得最明显  
+  `sessions_dir_enum_total_ms` 从 `77.678` 到 `1781.805`，涨幅非常大，见同一张表。
+- `sessions_tmp_total_ms` 也明显涨  
+  `327.700 -> 1679.839`
+- `execution_admission_wait_mean_ms` 也从 `0.143` 到 `9.253`
+  说明很多时间耗在真正执行前的 admission / scheduling wait，见 [Gateway Runtime Stage Table](/root/client-harness/res/vps-docker-single-task-00-500-full-vs-vps-docker-multi-task-00-500-10x50/summary.md#L108)。
+
+所以一句话版本可以说成：
+
+`multi` 更慢，主要不是模型算得慢，也不是磁盘本身慢，而是并发下 session manager 的共享状态更新被放大了：看起来有一把全局 session 索引锁，同时每个 session 都会触发 `sessions/` 目录解析、`sessions.json` 更新、临时文件写入这条链路，最终把 admission/queue wait 拉高。
+
+我会补一个小修正：
+
+- “每个 session 都要扫描目录建临时文档”这个说法，方向对，但更精确应该是：
+  - 不是在建普通“临时文档”
+  - 更像是在更新 session 索引时写 `sessions.json.<uuid>.tmp`
+  - 并伴随 `sessions/` 目录 realpath / 元数据访问
+
+所以最稳的总结是：
+**高概率存在 session manager 级别的全局共享锁或等价串行化点；并发下每个 session 的索引更新、目录解析、tmp 文件写入会互相排队，这是 multi 更慢的主要原因。**
+
+如果你愿意，我可以下一步把这段话整理成一段可以直接放进报告结论区的英文/中文摘要。
+
+---
+可以，按你现在这套报告，基本可以分成这三类。
+
+| 类别 | 指标/文件 | 代表什么 |
+| --- | --- | --- |
+| `client observed` | `latency.csv`, `latency_ms.connect/send/wait/history/total` | client 视角看到的一次完整请求耗时 |
+| `gateway process` | `pidstat`, `strace`, `perf_stat`, `perf_record`, `node_trace`, `gateway_runtime_spans` | gateway 进程内部在做什么、卡在哪、哪些路径慢 |
+| `container / host system` | `docker_stats`, `iostat`, `vmstat` | 容器整体资源、宿主机磁盘、宿主机调度/中断等系统层状态 |
+
+再细一点对应如下：
+
+| 指标 | 层级 | 说明 |
+| --- | --- | --- |
+| `wait_mean_ms` | `client observed` | client 等待 agent 完成的时间 |
+| `history_mean_ms` | `client observed` | client 拉回 history 的时间 |
+| `pidstat cpu_percent/rss_kib/kb_wr_per_s/cswch_per_s` | `gateway process` | gateway 这个进程自己的 CPU/内存/写入/上下文切换 |
+| `strace futex/openat/statx/...` | `gateway process` | gateway 进程触发了哪些 syscall |
+| `perf context-switches/cpu-migrations/...` | `gateway process` | gateway 进程相关的 perf 指标 |
+| `perf_record runtime samples` | `gateway process` | gateway CPU 栈热点，偏用户态/运行时分类 |
+| `node_trace` | `gateway process` | Node/libuv/fs/runtime 事件，最接近 gateway 内部阶段 |
+| `gateway_runtime_spans` | `gateway process` | gateway 应用层埋点阶段，比如 `execution_admission_wait` |
+| `docker_stats cpu/mem/block_write` | `container system` | 整个 gateway 容器整体资源消耗 |
+| `iostat w_await/pct_util/aqu_sz` | `host system` | 宿主机磁盘设备层状态 |
+| `vmstat interrupts/context_switches/run_queue` | `host system` | 宿主机整体调度和中断状态 |
+
+所以你现在这份结论里：
+
+- “multi 更慢”这个现象
+  - 是从 `client observed` 的 latency 看出来的
+- “慢在 execution admission wait”
+  - 是从 `gateway process` 的 `gateway_runtime_spans` 看出来的
+- “和 sessions 目录 / lock / tmp 文件有关”
+  - 也是从 `gateway process` 的 `node_trace/strace` 看出来的
+- “不是磁盘打满”
+  - 是从 `host system` 的 `iostat/vmstat` 看出来的
+
+如果你愿意，我还可以把这张表直接整理进 `metrics_guide.md` 或 report 说明里。
+---
+
+是，主要就是采集变重了，不是单一原因，但“打了很多 span / trace / syscall 采集”是大头。
+
+现在这轮比之前慢，主要叠了这几层开销：
+
+- `strace`
+  会附着到 gateway 进程，追很多 syscall。这个对高频 `futex/openat/statx/...` 路径本身就有明显开销，配置在 [scenario.py](/root/client-harness/src/openclaw_harness/scenario.py) 和 [vps_docker_multi.json](/root/client-harness/scenarios/vps/vps_docker_multi.json)。
+- `perf record`
+  这是持续采样，也会拖慢一点，尤其并发高时。
+- `node trace`
+  现在还开了 `node.async_hooks/node.fs/node.environment` 这些 trace category，会让 Node 运行时额外写大量 trace event，见 [runtime.py](/root/client-harness/src/openclaw_harness/runtime.py)。
+- collector 变多了
+  现在不是只有 `docker_stats/pidstat/iostat`，还同时开了 `strace + node_trace + perf_stat + perf_record`，整体就比最早那版重很多。
+
+另外还有两个“不是采集本身，但会让整轮墙钟更长”的变化：
+
+- 我为了把 `multi` 跑稳，加了连接限流  
+  [runner.py](/root/client-harness/src/openclaw_harness/runner.py) 里现在最多 4 个 worker 同时 `connect()`。
+- 我把 `worker_stagger_ms` 从 `150` 提到了 `600`  
+  这会让 20 个 worker 分批连上，启动阶段本来就会更长，见 [vps_docker_multi.json](/root/client-harness/scenarios/vps/vps_docker_multi.json)。
+
+所以更准确地说：
+
+- 单请求变慢：主要是 tracing/profiling 开销
+- 整轮墙钟更长：除了 tracing，还因为我故意把连接阶段放缓，避免 handshake timeout
+
+如果你想要“更接近真实性能”的 benchmark，我建议分两种跑法：
+
+- 轻量基准
+  关掉 `strace`、`node_trace`、`perf_record`，只留 `docker_stats/pidstat/iostat/vmstat`
+- 诊断基准
+  保留现在这套重采集，用来定位瓶颈
+
+如果你愿意，我可以直接帮你再加一个 `vps_docker_multi_light.json`，专门做低开销基准。
