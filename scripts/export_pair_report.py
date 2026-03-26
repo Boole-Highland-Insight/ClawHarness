@@ -714,14 +714,19 @@ def save_dataframe(df: pd.DataFrame, output_path: Path) -> None:
 
 
 def has_dataframe_data(df: pd.DataFrame | None) -> bool:
-    return isinstance(df, pd.DataFrame) and not df.empty and len(df.columns) > 0
+    if not isinstance(df, pd.DataFrame) or df.empty or len(df.columns) == 0:
+        return False
+    numeric_df = df.select_dtypes(include=["number"])
+    return not numeric_df.empty and len(numeric_df.columns) > 0
 
 
 def plot_dataframe(df: pd.DataFrame, title: str, ylabel: str, output_path: Path) -> None:
     if plt is None:
         raise RuntimeError("matplotlib is required to render figures")
+    if not has_dataframe_data(df):
+        return
     fig, ax = plt.subplots(figsize=(10, 5))
-    df.plot(kind="bar", ax=ax, rot=0, title=title)
+    df.select_dtypes(include=["number"]).plot(kind="bar", ax=ax, rot=0, title=title)
     ax.set_ylabel(ylabel)
     ax.set_xlabel("")
     plt.tight_layout()
@@ -1334,21 +1339,18 @@ def build_pair_outputs(
                 {
                     "subtitle": "Bootstrap Load Duration",
                     "ylabel": "ms",
-                    "render_mode": "scatter",
                     "left": time_series_points(left_summary, ["collector_analysis", "gateway_runtime_spans", "time_series", "bootstrap_load_duration_ms"]),
                     "right": time_series_points(right_summary, ["collector_analysis", "gateway_runtime_spans", "time_series", "bootstrap_load_duration_ms"]),
                 },
                 {
                     "subtitle": "Skills Duration",
                     "ylabel": "ms",
-                    "render_mode": "scatter",
                     "left": time_series_points(left_summary, ["collector_analysis", "gateway_runtime_spans", "time_series", "skills_duration_ms"]),
                     "right": time_series_points(right_summary, ["collector_analysis", "gateway_runtime_spans", "time_series", "skills_duration_ms"]),
                 },
                 {
                     "subtitle": "Context Bundle Duration",
                     "ylabel": "ms",
-                    "render_mode": "scatter",
                     "left": time_series_points(left_summary, ["collector_analysis", "gateway_runtime_spans", "time_series", "context_bundle_duration_ms"]),
                     "right": time_series_points(right_summary, ["collector_analysis", "gateway_runtime_spans", "time_series", "context_bundle_duration_ms"]),
                 },

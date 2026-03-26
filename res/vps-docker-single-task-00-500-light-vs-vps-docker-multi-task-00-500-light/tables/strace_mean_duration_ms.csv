@@ -1,0 +1,10 @@
+,vps-docker-single-task-00-500-light,vps-docker-multi-task-00-500-light
+openat,,
+statx,,
+newfstatat,,
+pread64,,
+clone,,
+sched_yield,,
+futex,,
+read,,
+write,,

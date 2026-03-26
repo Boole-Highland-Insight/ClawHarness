@@ -1,5 +1,5 @@
 {
-  "name": "vps-docker-single-task-his1-500-full",
+  "name": "vps-docker-multi-task-00-500-light",
   "runtime": {
     "kind": "docker",
     "image": "openclaw:bench-local",
@@ -8,25 +8,25 @@
     "host_port": 19189,
     "container_port": 18789,
     "gateway_bind": "lan",
-    "gateway_token": "openclaw-bench-token",
-    "build_image_if_missing": false,
+    "gateway_token": "replace-with-vps-gateway-token",
+    "build_image_if_missing": true,
     "force_rebuild": false,
     "skip_channels": true,
     "startup_timeout_sec": 240
   },
   "client": {
     "role": "operator",
-    "message": "/history head 1",
-    "session_prefix": "vps-docker-single-task-his1-00-500-full",
+    "message": "/context list",
+    "session_prefix": "vps-docker-multi-task-00-500-light",
     "session_mode": "per_worker",
-    "history_limit": 1,
-    "wait_timeout_ms": 15000,
-    "send_timeout_ms": 15000
+    "history_limit": 20,
+    "wait_timeout_ms": 35000,
+    "send_timeout_ms": 35000
   },
   "load": {
-    "concurrency": 1,
-    "requests_per_worker": 500,
-    "worker_stagger_ms": 0,
+    "concurrency": 10,
+    "requests_per_worker": 50,
+    "worker_stagger_ms": 150,
     "request_pause_ms": 0
   },
   "collectors": {
@@ -60,6 +60,6 @@
     }
   },
   "artifacts": {
-    "summary_only": false
+    "summary_only": true
   }
 }

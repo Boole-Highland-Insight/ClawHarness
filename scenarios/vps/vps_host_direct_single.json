@@ -34,11 +34,25 @@
       "enabled": true,
       "interval_sec": 1
     },
+    "strace": {
+      "enabled": false
+    },
+    "node_trace": {
+      "enabled": false
+    },
+    "iostat": {
+      "enabled": true,
+      "interval_sec": 1
+    },
     "perf_stat": {
-      "enabled": true
+      "enabled": false
     },
     "perf_record": {
       "enabled": false
+    },
+    "vmstat": {
+      "enabled": true,
+      "interval_sec": 1
     }
   }
 }
