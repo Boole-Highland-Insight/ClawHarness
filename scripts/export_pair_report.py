@@ -23,7 +23,19 @@ SCRIPTS_ROOT = REPO_ROOT / "scripts"
 
 sys.path.insert(0, str(SCRIPTS_ROOT))
 
-from plot_latency import LATENCY_COLUMNS, load_points
+try:
+    from plot_latency import LATENCY_COLUMNS, load_points
+except ModuleNotFoundError:
+    LATENCY_COLUMNS = [
+        ("connect_latency_ms", "Connect"),
+        ("send_latency_ms", "Send"),
+        ("wait_latency_ms", "Wait"),
+        ("history_latency_ms", "History"),
+        ("total_latency_ms", "Total"),
+    ]
+
+    def load_points(csv_path: Path, only_success: bool) -> list[Any]:
+        raise RuntimeError("plot_latency dependencies are unavailable; rerun without --skip-figures or install matplotlib")
 
 
 def parse_args() -> argparse.Namespace:

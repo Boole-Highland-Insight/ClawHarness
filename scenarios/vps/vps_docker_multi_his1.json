@@ -1,5 +1,5 @@
 {
-  "name": "vps-docker-multi-task-his1-00-500-full",
+  "name": "vps-docker-multi-task-his1-50-full",
   "runtime": {
     "kind": "docker",
     "image": "openclaw:bench-local",
@@ -17,15 +17,15 @@
   "client": {
     "role": "operator",
     "message": "/history head 1",
-    "session_prefix": "vps-docker-multi-task-his1-00-500-full",
+    "session_prefix": "vps-docker-multi-task-his1-50-full",
     "session_mode": "per_worker",
     "history_limit": 1,
     "wait_timeout_ms": 15000,
     "send_timeout_ms": 15000
   },
   "load": {
-    "concurrency": 20,
-    "requests_per_worker": 25,
+    "concurrency": 10,
+    "requests_per_worker": 5,
     "worker_stagger_ms": 150,
     "request_pause_ms": 0
   },
@@ -39,20 +39,20 @@
       "interval_sec": 1
     },
     "strace": {
-      "enabled": false
+      "enabled": true
     },
     "node_trace": {
-      "enabled": false
+      "enabled": true
     },
     "iostat": {
       "enabled": true,
       "interval_sec": 1
     },
     "perf_stat": {
-      "enabled": false
+      "enabled": true
     },
     "perf_record": {
-      "enabled": false
+      "enabled": true
     },
     "vmstat": {
       "enabled": true,

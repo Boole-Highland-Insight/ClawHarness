@@ -1072,6 +1072,7 @@ def parse_gateway_runtime_log(path: Path, *, output_dir: Path) -> ParsedArtifact
         "skills": _summarize_present_numeric(
             embedded_phase_values.get("context_bundle_skills_end", [])
             or embedded_phase_values.get("skills_snapshot_end", [])
+            or embedded_phase_values.get("prepared_skill_snapshot_end", [])
         ),
         "context_bundle": _summarize_present_numeric(embedded_phase_values.get("context_bundle_end", [])),
         "execution_admission_wait": _summarize_present_numeric(execution_admission_wait_ms),
@@ -1861,7 +1862,45 @@ def _load_node_trace_payloads(path: Path) -> list[dict[str, Any]]:
         if isinstance(payload, dict) and isinstance(payload.get("traceEvents"), list):
             payloads.append(payload)
         index = max(next_index, next_start + 1)
+    if payloads:
+        return payloads
+
+    partial_trace_events = _load_partial_node_trace_events(text, decoder=decoder)
+    if partial_trace_events:
+        return [{"traceEvents": partial_trace_events, "_partial": True}]
     return payloads
+
+
+def _load_partial_node_trace_events(text: str, *, decoder: json.JSONDecoder) -> list[dict[str, Any]]:
+    trace_events_key = '"traceEvents"'
+    key_index = text.find(trace_events_key)
+    if key_index < 0:
+        return []
+
+    array_start = text.find("[", key_index + len(trace_events_key))
+    if array_start < 0:
+        return []
+
+    events: list[dict[str, Any]] = []
+    index = array_start + 1
+    while index < len(text):
+        while index < len(text) and text[index] in {" ", "\t", "\r", "\n", ","}:
+            index += 1
+        if index >= len(text) or text[index] == "]":
+            break
+        if text[index] != "{":
+            next_object = text.find("{", index)
+            if next_object < 0:
+                break
+            index = next_object
+        try:
+            event, next_index = decoder.raw_decode(text, index)
+        except json.JSONDecodeError:
+            break
+        if isinstance(event, dict):
+            events.append(event)
+        index = max(next_index, index + 1)
+    return events
 
 
 def _is_gateway_trace_payload(payload: dict[str, Any]) -> bool:

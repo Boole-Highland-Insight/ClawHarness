@@ -1,0 +1,43 @@
+body {
+  font-family: "Noto Sans CJK SC", "Noto Sans CJK JP", sans-serif;
+  line-height: 1.6;
+  font-size: 14px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: "Noto Serif CJK SC", "Noto Serif CJK JP", serif;
+}
+
+code,
+pre,
+kbd,
+samp {
+  font-family: "Noto Sans Mono CJK SC", "Noto Sans Mono CJK JP", monospace;
+}
+
+pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+th,
+td {
+  border: 1px solid #d0d7de;
+  padding: 6px 8px;
+  vertical-align: top;
+}

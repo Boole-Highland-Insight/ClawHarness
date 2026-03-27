@@ -310,11 +310,11 @@ async def run_scenario(
     finally:
         for collector in reversed(collectors):
             collector.stop()
+        runtime_manager.stop()
         collector_analysis = parse_collector_artifacts(
             output_dir=run_dir,
             collectors=collectors,
         )
-        runtime_manager.stop()
         meta = {
             "scenario": scenario.to_dict(),
             "task": {
