@@ -1,6 +1,6 @@
 ,vps-docker-single-task-00-500-light,vps-docker-multi-task-00-500-light
-fs_async,,
-fs_callback,,
-promise_callback,,
-event_loop_immediate,,
-event_loop_timers,,
+fs_async,12.871392300965065,10.949422810900893
+fs_callback,41.42823529411765,39.47624561403509
+promise_callback,0.5637291987673344,0.5809567909033481
+event_loop_immediate,0.026773519163763068,0.03390805369127516
+event_loop_timers,0.039,1.6160000000000003

@@ -1,22 +1,52 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+install_sysstat() {
+  if command -v apt >/dev/null 2>&1; then
+    sudo apt update
+    sudo apt install -y sysstat
+  elif command -v dnf >/dev/null 2>&1; then
+    sudo dnf install -y sysstat
+  else
+    echo "Unsupported package manager: need apt or dnf." >&2
+    exit 1
+  fi
+}
+
+install_perf_helpers() {
+  if command -v apt >/dev/null 2>&1; then
+    if sudo apt install -y linux-tools-common linux-tools-generic linux-cloud-tools-generic; then
+      echo "Installed generic linux-tools packages."
+      return 0
+    fi
+  elif command -v dnf >/dev/null 2>&1; then
+    if sudo dnf install -y perf; then
+      echo "Installed perf package."
+      return 0
+    fi
+  else
+    echo "Unsupported package manager: need apt or dnf." >&2
+    exit 1
+  fi
+
+  return 1
+}
+
 echo "Detected host:"
 uname -a
 echo
 
 echo "Installing pidstat/iostat via sysstat..."
-sudo apt update
-sudo apt install -y sysstat
+install_sysstat
 
 echo
 echo "Attempting to install perf helper packages..."
-if sudo apt install -y linux-tools-common linux-tools-generic linux-cloud-tools-generic; then
-  echo "Installed generic linux-tools packages."
+if install_perf_helpers; then
+  :
 else
   cat <<'EOF'
-linux-tools packages were not fully installed.
-This is expected on some WSL kernels, especially microsoft-standard-WSL2 builds.
+perf packages were not fully installed.
+This is expected on some kernels or minimal images.
 If perf is still unavailable after this, keep using pidstat locally and collect perf data on the VPS.
 EOF
 fi

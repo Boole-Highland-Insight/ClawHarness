@@ -2,13 +2,13 @@
   "name": "vps-docker-multi-task-00-500-light",
   "runtime": {
     "kind": "docker",
-    "image": "openclaw:bench-local",
-    "container_name_base": "openclaw-bench-vps",
+    "image": "openclaw:bench-local-v2",
+    "container_name_base": "openclaw-bench-vps-v2",
     "host": "127.0.0.1",
     "host_port": 19189,
     "container_port": 18789,
     "gateway_bind": "lan",
-    "gateway_token": "replace-with-vps-gateway-token",
+    "gateway_token": "openclaw-bench-token",
     "build_image_if_missing": true,
     "force_rebuild": false,
     "skip_channels": true,
@@ -42,7 +42,7 @@
       "enabled": false
     },
     "node_trace": {
-      "enabled": false
+      "enabled": true
     },
     "iostat": {
       "enabled": true,

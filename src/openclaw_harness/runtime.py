@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import secrets
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -410,6 +411,7 @@ class DockerRuntimeManager:
         devices_dir = self.config_dir / "devices"
         devices_dir.mkdir(parents=True, exist_ok=True)
         now_ms = int(time.time() * 1000)
+        operator_scopes = ["operator.admin"]
         paired_payload = {
             self.device_identity.device_id: {
                 "deviceId": self.device_identity.device_id,
@@ -420,8 +422,16 @@ class DockerRuntimeManager:
                 "clientMode": "backend",
                 "role": "operator",
                 "roles": ["operator"],
-                "scopes": ["operator.admin"],
-                "approvedScopes": ["operator.admin"],
+                "scopes": operator_scopes,
+                "approvedScopes": operator_scopes,
+                "tokens": {
+                    "operator": {
+                        "token": secrets.token_urlsafe(32),
+                        "role": "operator",
+                        "scopes": operator_scopes,
+                        "createdAtMs": now_ms,
+                    },
+                },
                 "createdAtMs": now_ms,
                 "approvedAtMs": now_ms,
             },
