@@ -1,3 +1,0 @@
-scenario,cpu_percent,mem_percent,block_read_bytes_per_s,block_write_bytes_per_s
-vps-docker-single-task-00-500-light,106.40192307692307,1.32,0.0,11423992.245522644
-vps-docker-multi-task-00-500-light,107.72541666666666,1.4458333333333335,0.0,11720111.009228919

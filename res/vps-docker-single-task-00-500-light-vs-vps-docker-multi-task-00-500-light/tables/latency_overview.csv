@@ -1,3 +1,0 @@
-scenario,total_mean,total_p50,total_p95,total_p99
-vps-docker-single-task-00-500-light,261.776182,252.928,367.645,390.102
-vps-docker-multi-task-00-500-light,1533.5638940000001,1578.276,2000.877,3878.74

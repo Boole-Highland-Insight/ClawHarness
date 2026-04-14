@@ -2,14 +2,14 @@
   "name": "vps-docker-single-task-00-500-light",
   "runtime": {
     "kind": "docker",
-    "image": "openclaw:bench-local-v2",
+    "image": "openclaw:bench-vps",
     "container_name_base": "openclaw-bench-vps-v2",
     "host": "127.0.0.1",
     "host_port": 19189,
     "container_port": 18789,
     "gateway_bind": "lan",
     "gateway_token": "openclaw-bench-token",
-    "build_image_if_missing": false,
+    "build_image_if_missing": true,
     "force_rebuild": false,
     "skip_channels": true,
     "startup_timeout_sec": 240

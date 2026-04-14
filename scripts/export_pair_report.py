@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import math
 import shutil
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -877,6 +879,178 @@ def plot_latency_timeline(
     plt.close(fig)
 
 
+def parse_csv_float(value: Any) -> float | None:
+    raw_value = str(value).strip()
+    if not raw_value:
+        return None
+    try:
+        return float(raw_value)
+    except ValueError:
+        return None
+
+
+def parse_csv_int(value: Any) -> int | None:
+    raw_value = str(value).strip()
+    if not raw_value:
+        return None
+    try:
+        return int(raw_value)
+    except ValueError:
+        return None
+
+
+def parse_iso_datetime(value: Any) -> datetime | None:
+    raw_value = str(value).strip()
+    if not raw_value:
+        return None
+    try:
+        return datetime.fromisoformat(raw_value)
+    except ValueError:
+        return None
+
+
+def load_actual_request_timeline_points(csv_path: Path) -> list[tuple[float, float]]:
+    rows: list[dict[str, Any]] = []
+    with csv_path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            started_at = parse_iso_datetime(row.get("started_at"))
+            if started_at is None:
+                continue
+
+            total_latency_ms = parse_csv_float(row.get("total_latency_ms"))
+            if total_latency_ms is None:
+                continue
+
+            rows.append(
+                {
+                    "started_at": started_at,
+                    "finished_at": parse_iso_datetime(row.get("finished_at")),
+                    "worker_id": parse_csv_int(row.get("worker_id")),
+                    "request_index": parse_csv_int(row.get("request_index")),
+                    "connect_latency_ms": parse_csv_float(row.get("connect_latency_ms")) or 0.0,
+                    "total_latency_ms": total_latency_ms,
+                }
+            )
+
+    rows.sort(key=lambda row: row["started_at"])
+    first_request_started_at = rows[0]["started_at"] if rows else None
+    if first_request_started_at is None:
+        return []
+    seen_workers: set[int] = set()
+    point_rows: list[tuple[datetime, float]] = []
+
+    for row in rows:
+        worker_id = row["worker_id"]
+        request_index = row["request_index"]
+        include_connect = False
+        if worker_id is not None:
+            if worker_id not in seen_workers:
+                seen_workers.add(worker_id)
+                include_connect = True
+        elif request_index == 0:
+            include_connect = True
+
+        actual_latency_ms = float(row["total_latency_ms"])
+        if include_connect:
+            actual_latency_ms += float(row["connect_latency_ms"])
+
+        point_at = row["finished_at"] or row["started_at"]
+        point_rows.append((point_at, actual_latency_ms))
+
+    point_rows.sort(key=lambda item: item[0])
+    return [
+        ((point_at - first_request_started_at).total_seconds(), actual_latency_ms)
+        for point_at, actual_latency_ms in point_rows
+    ]
+
+
+def compute_run_timing_metrics(summary: dict[str, Any], csv_path: Path) -> dict[str, Any]:
+    run_started_at = parse_iso_datetime(summary.get("started_at"))
+    run_finished_at = parse_iso_datetime(summary.get("finished_at"))
+    run_wall_clock_sec = None
+    if run_started_at is not None and run_finished_at is not None:
+        run_wall_clock_sec = (run_finished_at - run_started_at).total_seconds()
+
+    request_started_at: datetime | None = None
+    request_finished_at: datetime | None = None
+    with csv_path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            started_at = parse_iso_datetime(row.get("started_at"))
+            finished_at = parse_iso_datetime(row.get("finished_at"))
+            if started_at is not None and (request_started_at is None or started_at < request_started_at):
+                request_started_at = started_at
+            if finished_at is not None and (request_finished_at is None or finished_at > request_finished_at):
+                request_finished_at = finished_at
+
+    request_window_sec = None
+    if request_started_at is not None and request_finished_at is not None:
+        request_window_sec = (request_finished_at - request_started_at).total_seconds()
+
+    return {
+        "run_started_at": run_started_at.isoformat() if run_started_at is not None else None,
+        "run_finished_at": run_finished_at.isoformat() if run_finished_at is not None else None,
+        "run_wall_clock_sec": run_wall_clock_sec,
+        "first_request_started_at": request_started_at.isoformat() if request_started_at is not None else None,
+        "last_request_finished_at": request_finished_at.isoformat() if request_finished_at is not None else None,
+        "request_window_sec": request_window_sec,
+    }
+
+
+def build_run_timing_row(summary: dict[str, Any], run_dir: Path, *, scenario_label: str | None = None) -> dict[str, Any]:
+    row = {
+        "scenario": scenario_label or summary["scenario"],
+        "run_dir": str(run_dir),
+    }
+    row.update(compute_run_timing_metrics(summary, run_dir / "latency.csv"))
+    return row
+
+
+def plot_actual_request_timeline(
+    *,
+    run_specs: list[dict[str, Any]],
+    title: str,
+    output_path: Path,
+) -> None:
+    if plt is None:
+        raise RuntimeError("matplotlib is required to render figures")
+
+    line_styles = ["-", "--", "-.", ":"]
+    markers = ["o", "s", "^", "D", "x", "P", "*"]
+    has_points = False
+    fig, ax = plt.subplots(figsize=(14, 5.5), constrained_layout=True)
+
+    for index, spec in enumerate(run_specs):
+        points = load_actual_request_timeline_points(Path(spec["csv_path"]))
+        if not points:
+            continue
+        has_points = True
+        ax.plot(
+            [x for x, _ in points],
+            [y for _, y in points],
+            linewidth=1.2,
+            marker=markers[index % len(markers)],
+            markersize=2.8,
+            linestyle=line_styles[index % len(line_styles)],
+            alpha=0.85,
+            label=str(spec["label"]),
+        )
+
+    if not has_points:
+        plt.close(fig)
+        return
+
+    ax.set_xlabel("Elapsed wall-clock time since first request start (s)")
+    ax.set_ylabel("Per-request actual elapsed (ms)")
+    ax.set_title(title)
+    ax.grid(True, alpha=0.25)
+    ax.legend()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+
+
 def dataframe_to_markdown(df: pd.DataFrame, digits: int = 3) -> str:
     formatted = df.copy()
     for column in formatted.columns:
@@ -919,6 +1093,13 @@ def build_pair_outputs(
         ]
     ).set_index("scenario")
     save_dataframe(profile_df, pair_dir / "tables" / "resource_profile.csv")
+    run_timing_df = pd.DataFrame(
+        [
+            build_run_timing_row(left_summary, left_run_dir, scenario_label=left_name),
+            build_run_timing_row(right_summary, right_run_dir, scenario_label=right_name),
+        ]
+    ).set_index("scenario")
+    save_dataframe(run_timing_df, pair_dir / "tables" / "run_timing.csv")
     peak_df = pd.DataFrame(
         [
             build_peak_profile_row(left_summary),
@@ -1119,6 +1300,7 @@ def build_pair_outputs(
 
     table_map = {
         "latency_overview": latency_overview_df,
+        "run_timing": run_timing_df,
         "latency_phase_means": phase_df,
         "latency_tail": tail_df,
         "container_metrics": container_df,
@@ -1188,6 +1370,20 @@ def build_pair_outputs(
             label_a=left_name,
             label_b=right_name,
             output_path=pair_dir / "figures" / "latency_timeline.png",
+        )
+        plot_actual_request_timeline(
+            run_specs=[
+                {
+                    "label": left_name,
+                    "csv_path": left_run_dir / "latency.csv",
+                },
+                {
+                    "label": right_name,
+                    "csv_path": right_run_dir / "latency.csv",
+                },
+            ],
+            title="Actual Request Timeline (Wall Clock, Total + First Connect)",
+            output_path=pair_dir / "figures" / "actual_request_timeline.png",
         )
         plot_time_series_panels(
             panel_specs=[
@@ -1455,6 +1651,7 @@ def build_pair_outputs(
         ("Latency Tail", pair_dir / "figures" / "latency_tail.png"),
         ("Container CPU and Memory", pair_dir / "figures" / "container_cpu_mem.png"),
         ("Latency Timeline", pair_dir / "figures" / "latency_timeline.png"),
+        ("Actual Request Timeline", pair_dir / "figures" / "actual_request_timeline.png"),
         ("CPU Load Timeline", pair_dir / "figures" / "cpu_load_timeline.png"),
         ("Memory Load Timeline", pair_dir / "figures" / "mem_load_timeline.png"),
         ("I/O Load Timeline", pair_dir / "figures" / "io_load_timeline.png"),
@@ -1480,6 +1677,10 @@ def build_pair_outputs(
             "**Run Dirs**",
             "",
             dataframe_to_markdown(profile_copy[["run_dir", "requests_total", "requests_ok", "requests_failed"]]),
+            "",
+            "**Run Timing Table**",
+            "",
+            dataframe_to_markdown(run_timing_df),
             "",
             "**Figures**",
             "",

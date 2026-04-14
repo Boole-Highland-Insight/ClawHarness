@@ -1,3 +1,0 @@
-scenario,interrupts_per_s,system_context_switches_per_s,run_queue,perf_cache_misses,perf_context_switches,perf_cpu_migrations,perf_page_faults,perf_unsupported_events,strace_events_per_s_peak,strace_duration_ms_per_s_peak,strace_top_syscall,strace_top_syscall_total_duration_sec
-vps-docker-single-task-00-500-light,3759.557251908397,3138.7862595419847,1.0687022900763359,,,,,,,,,
-vps-docker-multi-task-00-500-light,4023.123966942149,3495.9421487603304,1.1900826446280992,,,,,,,,,

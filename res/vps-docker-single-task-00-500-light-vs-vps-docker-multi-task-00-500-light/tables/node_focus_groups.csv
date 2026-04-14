@@ -1,3 +1,0 @@
-scenario,sessions_lock_total_ms,sessions_lock_count,sessions_dir_enum_total_ms,sessions_dir_enum_count,sessions_json_total_ms,sessions_json_count,sessions_tmp_total_ms,sessions_tmp_count,bootstrap_files_total_ms,bootstrap_files_count
-vps-docker-single-task-00-500-light,1.1840000000000002,28.0,0.41500000000000015,14.0,0.223,7.0,1.033,28.0,18.223,91.0
-vps-docker-multi-task-00-500-light,5.479,92.0,4.977000000000001,46.0,0.7850000000000004,23.0,12.523,92.0,54.983,208.0
