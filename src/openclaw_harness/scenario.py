@@ -119,6 +119,7 @@ class RuntimeConfig:
     kind: Literal["docker", "host_direct"] = "docker"
     image: str = "openclaw:bench-local"
     container_name_base: str = "openclaw-bench"
+    instance_num: int = 1
     reuse_container_name: str = ""
     host: str = "127.0.0.1"
     host_port: int = 19189
@@ -218,6 +219,8 @@ def load_scenario(path: Path) -> ScenarioConfig:
         raise ValueError(
             f"invalid runtime.kind={scenario.runtime.kind!r}; expected 'docker' or 'host_direct'",
         )
+    if scenario.runtime.instance_num <= 0:
+        raise ValueError("runtime.instance_num must be >= 1")
     if scenario.runtime.reuse_container_name.strip() and scenario.runtime.kind != "docker":
         raise ValueError("runtime.reuse_container_name is only supported for docker runtimes")
     if scenario.runtime.network_mode not in {"bridge", "host"}:
@@ -225,6 +228,19 @@ def load_scenario(path: Path) -> ScenarioConfig:
             "invalid runtime.network_mode="
             f"{scenario.runtime.network_mode!r}; expected 'bridge' or 'host'",
         )
+    if scenario.runtime.instance_num > 1 and scenario.runtime.kind != "docker":
+        raise ValueError("runtime.instance_num > 1 is only supported for docker runtimes")
+    if scenario.runtime.instance_num > 1 and scenario.runtime.reuse_container_name.strip():
+        raise ValueError("runtime.instance_num > 1 does not support reusing a single existing container")
+    if scenario.runtime.instance_num > 1 and (
+        scenario.runtime.ws_url.strip() or scenario.runtime.healthcheck_url.strip()
+    ):
+        raise ValueError(
+            "runtime.instance_num > 1 does not support explicit runtime.ws_url or runtime.healthcheck_url; "
+            "the harness assigns per-instance ports automatically",
+        )
+    if scenario.runtime.instance_num > 1 and scenario.runtime.host_port <= 0:
+        raise ValueError("runtime.instance_num > 1 requires runtime.host_port to be a positive base port")
     if scenario.runtime.reuse_container_name.strip() and scenario.runtime.container_port <= 0:
         raise ValueError(
             "docker reuse requires runtime.container_port to be the OpenClaw port inside the existing container",

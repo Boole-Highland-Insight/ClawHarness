@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import shutil
 import platform
 import sys
-from dataclasses import asdict
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from time import perf_counter_ns
 from typing import Any
@@ -36,12 +37,28 @@ def resolve_session_key(
     return f"{prefix}-w{worker_id}"
 
 
+@dataclass(slots=True)
+class InstanceRunContext:
+    instance_index: int
+    output_dir: Path
+    runtime_config: Any
+    runtime_manager: Any
+    runtime_info: Any
+    collectors: list[Any]
+    preflight: dict[str, Any]
+    rows: list[dict[str, object]] = field(default_factory=list)
+    collector_analysis: dict[str, object] = field(default_factory=dict)
+    failure: str | None = None
+    started_at: str = ""
+
+
 async def execute_load(
     scenario: ScenarioConfig,
     url: str,
     token: str,
     *,
     device_identity,
+    instance_index: int = 0,
 ) -> list[dict[str, object]]:
     records: list[dict[str, object]] = []
     max_parallel_connects = min(4, max(1, scenario.load.concurrency))
@@ -54,7 +71,7 @@ async def execute_load(
             url=url,
             token=token,
             role=scenario.client.role,
-            instance_id=f"{slugify(scenario.name)}-{worker_id}-{uuid4().hex[:8]}",
+            instance_id=f"{slugify(scenario.name)}-i{instance_index:02d}-{worker_id}-{uuid4().hex[:8]}",
             device_identity=device_identity,
         )
         connect_latency_ms = 0.0
@@ -118,6 +135,7 @@ async def execute_load(
                 records.append(
                     {
                         "scenario": scenario.name,
+                        "instance_index": instance_index,
                         "task_id": scenario.client.task_id,
                         "task_name": scenario.client.task_name,
                         "worker_id": worker_id,
@@ -148,6 +166,38 @@ async def execute_load(
     return records
 
 
+def build_instance_output_dir(*, run_dir: Path, instance_index: int, instance_count: int) -> Path:
+    if instance_count <= 1:
+        return run_dir
+    return ensure_directory(run_dir / "instances" / f"instance-{instance_index:02d}")
+
+
+def build_instance_container_name(
+    *,
+    scenario: ScenarioConfig,
+    instance_index: int,
+    instance_count: int,
+) -> str:
+    base = f"{scenario.runtime.container_name_base}-{slugify(scenario.name)}"
+    if instance_count > 1:
+        base = f"{base}-i{instance_index:02d}"
+    return f"{base}-{uuid4().hex[:8]}"
+
+
+def build_instance_runtime_config(
+    *,
+    scenario: ScenarioConfig,
+    instance_index: int,
+) -> Any:
+    config = copy.deepcopy(scenario.runtime)
+    config.instance_num = 1
+    if scenario.runtime.instance_num > 1:
+        port_stride = 10 if scenario.runtime.network_mode == "host" else 1
+        config.host_port = scenario.runtime.host_port + (instance_index * port_stride)
+        config.force_rebuild = scenario.runtime.force_rebuild and instance_index == 0
+    return config
+
+
 def build_preflight_payload(
     *,
     scenario: ScenarioConfig,
@@ -157,10 +207,12 @@ def build_preflight_payload(
 ) -> dict[str, Any]:
     runtime_state = runtime_manager.dump_state()
     healthcheck_url = None
-    if scenario.runtime.kind == "docker":
-        healthcheck_url = f"http://{scenario.runtime.host}:{scenario.runtime.host_port}/healthz"
+    if runtime_state.get("resolved_healthcheck_url"):
+        healthcheck_url = str(runtime_state["resolved_healthcheck_url"])
     elif runtime_state.get("healthcheck_url"):
         healthcheck_url = str(runtime_state["healthcheck_url"])
+    elif scenario.runtime.kind == "docker":
+        healthcheck_url = f"http://{scenario.runtime.host}:{scenario.runtime.host_port}/healthz"
 
     checks: list[dict[str, Any]] = [
         {
@@ -245,6 +297,184 @@ def build_preflight_payload(
     }
 
 
+def build_aggregate_preflight(contexts: list[InstanceRunContext]) -> dict[str, Any]:
+    if len(contexts) == 1:
+        return contexts[0].preflight
+    instances = [
+        {
+            "instance_index": context.instance_index,
+            "output_dir": str(context.output_dir),
+            **context.preflight,
+        }
+        for context in contexts
+    ]
+    warnings: list[str] = []
+    for context in contexts:
+        warnings.extend(str(item) for item in context.preflight.get("warnings", []) if item)
+    return {
+        "runtime_kind": contexts[0].runtime_info.kind if contexts else "unknown",
+        "instance_num": len(contexts),
+        "ready": all(context.preflight.get("ready", False) for context in contexts),
+        "checked_at": iso_now(),
+        "instances": instances,
+        "warnings": warnings,
+    }
+
+
+def build_aggregate_collector_analysis(contexts: list[InstanceRunContext]) -> dict[str, object]:
+    if len(contexts) == 1:
+        return contexts[0].collector_analysis
+    return {
+        "instances": [
+            {
+                "instance_index": context.instance_index,
+                "output_dir": str(context.output_dir),
+                "analysis": context.collector_analysis,
+            }
+            for context in contexts
+        ]
+    }
+
+
+def summary_only_keep_files() -> set[str]:
+    return {
+        "summary.json",
+        "latency.csv",
+        "docker_stats.csv",
+        "perf_stat.csv",
+        "perf_stat.parsed.csv",
+        "perf_stat.summary.json",
+        "pidstat.log",
+        "iostat.log",
+        "vmstat.log",
+        "vmstat.parsed.csv",
+        "vmstat.summary.json",
+    }
+
+
+def prepare_instance(
+    *,
+    scenario: ScenarioConfig,
+    run_dir: Path,
+    instance_index: int,
+    device_identity,
+) -> InstanceRunContext:
+    instance_output_dir = build_instance_output_dir(
+        run_dir=run_dir,
+        instance_index=instance_index,
+        instance_count=scenario.runtime.instance_num,
+    )
+    runtime_config = build_instance_runtime_config(
+        scenario=scenario,
+        instance_index=instance_index,
+    )
+    if scenario.runtime.instance_num > 1:
+        instance_payload = scenario.to_dict()
+        instance_payload["runtime"] = asdict(runtime_config)
+        instance_payload["instance_index"] = instance_index
+        write_json(instance_output_dir / "scenario.resolved.json", instance_payload)
+    container_name = build_instance_container_name(
+        scenario=scenario,
+        instance_index=instance_index,
+        instance_count=scenario.runtime.instance_num,
+    )
+    runtime_manager = create_runtime_manager(
+        config=runtime_config,
+        node_trace=scenario.collectors.node_trace,
+        output_dir=instance_output_dir,
+        container_name=container_name,
+        device_identity=device_identity,
+    )
+    runtime_info = runtime_manager.start()
+    collectors = build_collectors(
+        config=scenario.collectors,
+        output_dir=instance_output_dir,
+        container_name=runtime_info.container_name,
+        host_pid=runtime_info.host_pid,
+    )
+    preflight = build_preflight_payload(
+        scenario=scenario,
+        runtime_info=runtime_info,
+        runtime_manager=runtime_manager,
+        collectors=collectors,
+    )
+    write_json(instance_output_dir / "preflight.json", preflight)
+    for collector in collectors:
+        collector.start()
+    return InstanceRunContext(
+        instance_index=instance_index,
+        output_dir=instance_output_dir,
+        runtime_config=runtime_config,
+        runtime_manager=runtime_manager,
+        runtime_info=runtime_info,
+        collectors=collectors,
+        preflight=preflight,
+    )
+
+
+def finalize_instance(
+    *,
+    scenario: ScenarioConfig,
+    environment: dict[str, Any],
+    context: InstanceRunContext,
+) -> None:
+    for collector in reversed(context.collectors):
+        collector.stop()
+    context.runtime_manager.stop()
+    context.collector_analysis = parse_collector_artifacts(
+        output_dir=context.output_dir,
+        collectors=context.collectors,
+    )
+    write_latency_csv(context.output_dir / "latency.csv", context.rows)
+    summary = build_summary(context.rows, scenario_name=scenario.name)
+    summary["instance_index"] = context.instance_index
+    summary["task"] = {
+        "source": "task_file" if scenario.client.task_file else "message",
+        "task_file": scenario.client.task_file,
+        "id": scenario.client.task_id,
+        "name": scenario.client.task_name,
+        "category": scenario.client.task_category,
+    }
+    summary["environment"] = summarize_environment(environment)
+    summary["preflight"] = {
+        "ready": context.preflight["ready"],
+        "target": context.preflight["target"],
+        "warnings": context.preflight["warnings"],
+    }
+    summary["collector_analysis"] = context.collector_analysis
+    summary["started_at"] = context.started_at
+    summary["finished_at"] = iso_now()
+    summary["failure"] = context.failure
+    write_summary(context.output_dir / "summary.json", summary)
+    meta = {
+        "scenario": scenario.to_dict(),
+        "instance_index": context.instance_index,
+        "instance_runtime": asdict(context.runtime_config),
+        "task": {
+            "source": "task_file" if scenario.client.task_file else "message",
+            "task_file": scenario.client.task_file,
+            "task_id": scenario.client.task_id,
+            "task_name": scenario.client.task_name,
+            "task_category": scenario.client.task_category,
+            "task_description": scenario.client.task_description,
+            "resolved_prompt": scenario.client.effective_message(),
+        },
+        "environment": environment,
+        "preflight": context.preflight,
+        "runtime": asdict(context.runtime_info),
+        "runtime_manager": context.runtime_manager.dump_state(),
+        "collectors": [collector.status.to_dict() for collector in context.collectors],
+        "collector_analysis": context.collector_analysis,
+        "started_at": context.started_at,
+        "finished_at": iso_now(),
+        "python": sys.version,
+        "platform": platform.platform(),
+        "failure": context.failure,
+    }
+    write_json(context.output_dir / "meta.json", meta)
+    if scenario.artifacts.summary_only and scenario.runtime.instance_num > 1:
+        prune_run_artifacts(run_dir=context.output_dir, keep_files=summary_only_keep_files())
+
 def prune_run_artifacts(*, run_dir: Path, keep_files: set[str]) -> None:
     for path in run_dir.iterdir():
         if path.name in keep_files:
@@ -263,58 +493,68 @@ async def run_scenario(
 ) -> Path:
     if keep_runtime:
         scenario.runtime.keep_container = True
+    output_root = output_root.resolve()
     device_identity = load_or_create_device_identity()
     run_dir = ensure_directory(output_root / f"{timestamp_slug()}_{slugify(scenario.name)}")
     write_json(run_dir / "scenario.resolved.json", scenario.to_dict())
     environment = probe_environment(scenario=scenario, output_dir=run_dir)
 
-    container_name = f"{scenario.runtime.container_name_base}-{slugify(scenario.name)}-{uuid4().hex[:8]}"
-    runtime_manager = create_runtime_manager(
-        config=scenario.runtime,
-        node_trace=scenario.collectors.node_trace,
-        output_dir=run_dir,
-        container_name=container_name,
-        device_identity=device_identity,
-    )
-    runtime_info = runtime_manager.start()
-    collectors = build_collectors(
-        config=scenario.collectors,
-        output_dir=run_dir,
-        container_name=runtime_info.container_name,
-        host_pid=runtime_info.host_pid,
-    )
-    preflight = build_preflight_payload(
-        scenario=scenario,
-        runtime_info=runtime_info,
-        runtime_manager=runtime_manager,
-        collectors=collectors,
-    )
-    write_json(run_dir / "preflight.json", preflight)
-    for collector in collectors:
-        collector.start()
-
-    started_at = iso_now()
+    contexts: list[InstanceRunContext] = []
+    preflight: dict[str, Any] = {}
+    started_at = ""
     rows: list[dict[str, object]] = []
     failure: str | None = None
     collector_analysis: dict[str, object] = {}
     try:
-        rows = await execute_load(
-            scenario,
-            runtime_info.url,
-            runtime_info.token,
-            device_identity=device_identity,
-        )
+        for instance_index in range(scenario.runtime.instance_num):
+            context = prepare_instance(
+                scenario=scenario,
+                run_dir=run_dir,
+                instance_index=instance_index,
+                device_identity=device_identity,
+            )
+            contexts.append(context)
+        preflight = build_aggregate_preflight(contexts)
+        write_json(run_dir / "preflight.json", preflight)
+
+        started_at = iso_now()
+        for context in contexts:
+            context.started_at = started_at
+
+        load_tasks = [
+            asyncio.create_task(
+                execute_load(
+                    scenario,
+                    context.runtime_info.url,
+                    context.runtime_info.token,
+                    device_identity=device_identity,
+                    instance_index=context.instance_index,
+                ),
+            )
+            for context in contexts
+        ]
+        load_results = await asyncio.gather(*load_tasks, return_exceptions=True)
+        failures: list[str] = []
+        for context, result in zip(contexts, load_results):
+            if isinstance(result, Exception):
+                context.failure = str(result)
+                failures.append(f"instance {context.instance_index}: {result}")
+                continue
+            context.rows = result
+            rows.extend(result)
+        if failures:
+            failure = "; ".join(failures)
     except Exception as exc:
         failure = str(exc)
         raise
     finally:
-        for collector in reversed(collectors):
-            collector.stop()
-        runtime_manager.stop()
-        collector_analysis = parse_collector_artifacts(
-            output_dir=run_dir,
-            collectors=collectors,
-        )
+        for context in contexts:
+            finalize_instance(
+                scenario=scenario,
+                environment=environment,
+                context=context,
+            )
+        collector_analysis = build_aggregate_collector_analysis(contexts)
         meta = {
             "scenario": scenario.to_dict(),
             "task": {
@@ -328,9 +568,41 @@ async def run_scenario(
             },
             "environment": environment,
             "preflight": preflight,
-            "runtime": asdict(runtime_info),
-            "runtime_manager": runtime_manager.dump_state(),
-            "collectors": [collector.status.to_dict() for collector in collectors],
+            "runtime": (
+                asdict(contexts[0].runtime_info)
+                if len(contexts) == 1
+                else {
+                    "kind": scenario.runtime.kind,
+                    "instance_num": len(contexts),
+                }
+            ),
+            "runtime_manager": (
+                contexts[0].runtime_manager.dump_state()
+                if len(contexts) == 1
+                else {
+                    "instances": [
+                        {
+                            "instance_index": context.instance_index,
+                            "output_dir": str(context.output_dir),
+                            "state": context.runtime_manager.dump_state(),
+                        }
+                        for context in contexts
+                    ]
+                }
+            ),
+            "instances": [
+                {
+                    "instance_index": context.instance_index,
+                    "output_dir": str(context.output_dir),
+                    "runtime": asdict(context.runtime_info),
+                    "runtime_manager": context.runtime_manager.dump_state(),
+                    "collectors": [collector.status.to_dict() for collector in context.collectors],
+                    "collector_analysis": context.collector_analysis,
+                    "preflight": context.preflight,
+                    "failure": context.failure,
+                }
+                for context in contexts
+            ],
             "collector_analysis": collector_analysis,
             "started_at": started_at,
             "finished_at": iso_now(),
@@ -340,8 +612,12 @@ async def run_scenario(
         }
         write_json(run_dir / "meta.json", meta)
 
+    if failure:
+        raise RuntimeError(failure)
+
     write_latency_csv(run_dir / "latency.csv", rows)
     summary = build_summary(rows, scenario_name=scenario.name)
+    summary["instance_num"] = scenario.runtime.instance_num
     summary["task"] = {
         "source": "task_file" if scenario.client.task_file else "message",
         "task_file": scenario.client.task_file,
@@ -350,30 +626,37 @@ async def run_scenario(
         "category": scenario.client.task_category,
     }
     summary["environment"] = summarize_environment(environment)
-    summary["preflight"] = {
-        "ready": preflight["ready"],
-        "target": preflight["target"],
-        "warnings": preflight["warnings"],
-    }
+    if len(contexts) == 1:
+        summary["preflight"] = {
+            "ready": preflight["ready"],
+            "target": preflight["target"],
+            "warnings": preflight["warnings"],
+        }
+    else:
+        summary["preflight"] = {
+            "ready": preflight["ready"],
+            "targets": [context.preflight["target"] for context in contexts],
+            "warnings": preflight["warnings"],
+        }
+        summary["instances"] = [
+            {
+                "instance_index": context.instance_index,
+                "output_dir": str(context.output_dir),
+                "requests_total": len(context.rows),
+                "requests_ok": sum(1 for row in context.rows if row.get("success")),
+                "requests_failed": sum(1 for row in context.rows if not row.get("success")),
+                "failure": context.failure,
+            }
+            for context in contexts
+        ]
     summary["collector_analysis"] = collector_analysis
     summary["started_at"] = started_at
     summary["finished_at"] = iso_now()
     write_summary(run_dir / "summary.json", summary)
     if scenario.artifacts.summary_only:
-        prune_run_artifacts(
-            run_dir=run_dir,
-            keep_files={
-                "summary.json",
-                "latency.csv",
-                "docker_stats.csv",
-                "perf_stat.csv",
-                "perf_stat.parsed.csv",
-                "perf_stat.summary.json",
-                "pidstat.log",
-                "iostat.log",
-                "vmstat.log",
-                "vmstat.parsed.csv",
-                "vmstat.summary.json",
-            },
-        )
+        keep_files = summary_only_keep_files()
+        if scenario.runtime.instance_num > 1:
+            keep_files = set(keep_files)
+            keep_files.add("instances")
+        prune_run_artifacts(run_dir=run_dir, keep_files=keep_files)
     return run_dir

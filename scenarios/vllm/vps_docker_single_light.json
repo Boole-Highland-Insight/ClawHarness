@@ -1,10 +1,11 @@
 {
-  "name": "vps-docker-single-qwen32b-00-100",
+  "name": "vps-docker-single-vllm-qwen3-32b-20-light",
   "runtime": {
     "kind": "docker",
     "image": "openclaw:bench-vps",
     "container_name_base": "openclaw-bench-vps-v2",
     "host": "127.0.0.1",
+    "instance_num": 1,
     "host_port": 19189,
     "container_port": 19189,
     "network_mode": "host",
@@ -23,6 +24,10 @@
         "defaults": {
           "model": {
             "primary": "vllm/qwen3-32b"
+          },
+          "params": {
+            "temperature": 0,
+            "maxTokens": 1024
           }
         }
       },
@@ -47,7 +52,10 @@
                   "cacheWrite": 0
                 },
                 "contextWindow": 32768, 
-                "maxTokens": 1024 
+                "maxTokens": 1024,
+                "compat": {
+                  "supportsUsageInStreaming": true
+                }
               }
             ]
           }
@@ -57,8 +65,9 @@
   },
   "client": {
     "role": "operator",
-    "message": "/context list",
-    "session_prefix": "vps-docker-single-qwen32b-00-100",
+    "message": "你是谁？",
+    "task_file": "",
+    "session_prefix": "vps-docker-single-vllm-qwen3-32b-20-light",
     "session_mode": "per_worker",
     "history_limit": 20,
     "wait_timeout_ms": 600000,
@@ -66,7 +75,7 @@
   },
   "load": {
     "concurrency": 1,
-    "requests_per_worker": 100,
+    "requests_per_worker": 20,
     "worker_stagger_ms": 0,
     "request_pause_ms": 0
   },
