@@ -18,6 +18,16 @@ from .scenario import NodeTraceConfig, RuntimeConfig
 from .utils import command_exists, compact_cmd, run_command
 
 
+def _deep_merge_dict(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
+    for key, value in overlay.items():
+        existing = base.get(key)
+        if isinstance(existing, dict) and isinstance(value, dict):
+            _deep_merge_dict(existing, value)
+            continue
+        base[key] = value
+    return base
+
+
 @dataclass(slots=True)
 class RuntimeInfo:
     kind: str
@@ -56,7 +66,9 @@ class DockerRuntimeManager:
         self.config = config
         self.node_trace = node_trace or NodeTraceConfig()
         self.output_dir = output_dir
-        self.container_name = container_name
+        self.reuse_container_name = self.config.reuse_container_name.strip()
+        self.reusing_existing_container = bool(self.reuse_container_name)
+        self.container_name = self.reuse_container_name or container_name
         self.device_identity = device_identity
         self.runtime_dir = output_dir / "runtime"
         self.config_dir = self.runtime_dir / "config"
@@ -67,8 +79,12 @@ class DockerRuntimeManager:
         self.repo_root = repo_root.resolve()
         self.dockerfile = (self.repo_root / config.dockerfile).resolve()
         self.container_id: str | None = None
+        self.resolved_url = ""
+        self.resolved_healthcheck_url = ""
 
     def start(self) -> RuntimeInfo:
+        if self.reusing_existing_container:
+            return self._start_existing_container()
         self.runtime_dir.mkdir(parents=True, exist_ok=True)
         self.config_dir.mkdir(parents=True, exist_ok=True)
         self.workspace_dir.mkdir(parents=True, exist_ok=True)
@@ -84,8 +100,6 @@ class DockerRuntimeManager:
             "--init",
             "--name",
             self.container_name,
-            "-p",
-            f"{self.config.host}:{self.config.host_port}:{self.config.container_port}",
             "-e",
             "HOME=/home/node",
             "-e",
@@ -99,6 +113,17 @@ class DockerRuntimeManager:
             "-v",
             f"{self.workspace_dir}:/home/node/.openclaw/workspace",
         ]
+        if self.config.network_mode == "host":
+            docker_args.extend(["--network", "host"])
+        else:
+            docker_args.extend(
+                [
+                    "-p",
+                    f"{self.config.host}:{self.config.host_port}:{self.config.container_port}",
+                ],
+            )
+        for key, value in self.config.env.items():
+            docker_args.extend(["-e", f"{key}={value}"])
         if self.node_trace.enabled:
             categories = ",".join(self.node_trace.categories)
             trace_pattern = "/home/node/.openclaw/workspace/node-trace-${pid}.json"
@@ -114,6 +139,11 @@ class DockerRuntimeManager:
             )
         if self.config.skip_channels:
             docker_args.extend(["-e", "OPENCLAW_SKIP_CHANNELS=1"])
+        gateway_port = (
+            self.config.host_port
+            if self.config.network_mode == "host"
+            else self.config.container_port
+        )
         docker_args.extend(
             [
                 self.config.image,
@@ -124,17 +154,22 @@ class DockerRuntimeManager:
                 "--bind",
                 self.config.gateway_bind,
                 "--port",
-                str(self.config.container_port),
+                str(gateway_port),
             ],
         )
         started = run_command(docker_args, cwd=self.repo_root)
         self.container_id = started.stdout.strip()
-        self._wait_for_health()
+        self.resolved_url = f"ws://{self.config.host}:{self.config.host_port}"
+        self.resolved_healthcheck_url = (
+            self.config.healthcheck_url.strip()
+            or f"http://{self.config.host}:{self.config.host_port}/healthz"
+        )
+        self._wait_for_health(self.resolved_healthcheck_url)
         self._write_logs()
         host_pid, host_pid_source = self._inspect_host_pid()
         return RuntimeInfo(
             kind="docker",
-            url=f"ws://{self.config.host}:{self.config.host_port}",
+            url=self.resolved_url,
             token=self.config.gateway_token,
             started_by_harness=True,
             container_name=self.container_name,
@@ -147,7 +182,7 @@ class DockerRuntimeManager:
 
     def stop(self) -> None:
         self._write_logs()
-        if self.config.keep_container:
+        if self.config.keep_container or self.reusing_existing_container:
             return
         run_command(["docker", "rm", "-f", self.container_name], check=False)
 
@@ -155,12 +190,41 @@ class DockerRuntimeManager:
         return {
             "container_name": self.container_name,
             "container_id": self.container_id,
+            "reuse_container_name": self.reuse_container_name or None,
+            "reusing_existing_container": self.reusing_existing_container,
+            "resolved_url": self.resolved_url or None,
+            "resolved_healthcheck_url": self.resolved_healthcheck_url or None,
             "runtime_dir": str(self.runtime_dir),
             "repo_root": str(self.repo_root),
             "dockerfile": str(self.dockerfile),
             "image_build_log": str(self.image_build_log),
             "container_log": str(self.container_log),
         }
+
+    def _start_existing_container(self) -> RuntimeInfo:
+        self.runtime_dir.mkdir(parents=True, exist_ok=True)
+        container = self._inspect_container()
+        self.container_id = str(container.get("Id") or "").strip() or None
+        self.resolved_url = self.config.ws_url.strip() or self._derive_existing_container_ws_url(container)
+        self.resolved_healthcheck_url = (
+            self.config.healthcheck_url.strip() or derive_healthcheck_url(self.resolved_url)
+        )
+        if self.resolved_healthcheck_url:
+            self._wait_for_health(self.resolved_healthcheck_url)
+        self._write_logs()
+        host_pid, host_pid_source = self._inspect_host_pid()
+        return RuntimeInfo(
+            kind="docker",
+            url=self.resolved_url,
+            token=self.config.gateway_token,
+            started_by_harness=False,
+            container_name=self.container_name,
+            container_id=self.container_id,
+            host_pid=host_pid,
+            host_pid_source=host_pid_source,
+            repo_root=str(self.repo_root),
+            runtime_dir=str(self.runtime_dir),
+        )
 
     def _ensure_image(self) -> None:
         inspect = run_command(["docker", "image", "inspect", self.config.image], check=False)
@@ -210,6 +274,37 @@ class DockerRuntimeManager:
         if not raw.isdigit():
             return None
         return int(raw)
+
+    def _inspect_container(self) -> dict[str, Any]:
+        result = run_command(["docker", "inspect", self.container_name], check=False)
+        if result.returncode != 0:
+            raise RuntimeError(f"failed to inspect docker container: {self.container_name}")
+        try:
+            payload = json.loads(result.stdout)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"docker inspect returned invalid JSON for {self.container_name}") from exc
+        if not isinstance(payload, list) or not payload or not isinstance(payload[0], dict):
+            raise RuntimeError(f"docker inspect returned no container payload for {self.container_name}")
+        return payload[0]
+
+    def _derive_existing_container_ws_url(self, container: dict[str, Any]) -> str:
+        port = int(self.config.container_port)
+        network_mode = str(container.get("HostConfig", {}).get("NetworkMode") or "").strip().lower()
+        if network_mode == "host":
+            host = self.config.host.strip() or "127.0.0.1"
+            return f"ws://{host}:{port}"
+        networks = container.get("NetworkSettings", {}).get("Networks", {})
+        if isinstance(networks, dict):
+            for network in networks.values():
+                if not isinstance(network, dict):
+                    continue
+                ip_address = str(network.get("IPAddress") or "").strip()
+                if ip_address:
+                    return f"ws://{ip_address}:{port}"
+        raise RuntimeError(
+            "could not resolve an IP for the existing docker container; "
+            "set runtime.ws_url explicitly or run the container with a reachable network",
+        )
 
     def _inspect_host_pid(self) -> tuple[int | None, str | None]:
         init_pid = self._inspect_pid()
@@ -358,8 +453,7 @@ class DockerRuntimeManager:
             return None
         return min(descendants, key=score)["pid"]
 
-    def _wait_for_health(self) -> None:
-        url = f"http://{self.config.host}:{self.config.host_port}/healthz"
+    def _wait_for_health(self, url: str) -> None:
         deadline = time.time() + self.config.startup_timeout_sec
         while time.time() < deadline:
             if not self._is_container_running():
@@ -403,6 +497,8 @@ class DockerRuntimeManager:
                 },
             },
         }
+        if self.config.openclaw_config:
+            payload = _deep_merge_dict(payload, self.config.openclaw_config)
         config_path.write_text(f"{json.dumps(payload, indent=2)}\n", encoding="utf-8")
 
     def _seed_device_pairing(self) -> None:

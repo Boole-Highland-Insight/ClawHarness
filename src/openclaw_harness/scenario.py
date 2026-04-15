@@ -119,9 +119,11 @@ class RuntimeConfig:
     kind: Literal["docker", "host_direct"] = "docker"
     image: str = "openclaw:bench-local"
     container_name_base: str = "openclaw-bench"
+    reuse_container_name: str = ""
     host: str = "127.0.0.1"
     host_port: int = 19189
     container_port: int = 18789
+    network_mode: Literal["bridge", "host"] = "bridge"
     ws_url: str = ""
     healthcheck_url: str = ""
     gateway_bind: str = "lan"
@@ -134,6 +136,8 @@ class RuntimeConfig:
     keep_container: bool = False
     repo_root: str = ""
     dockerfile: str = "Dockerfile"
+    env: dict[str, str] = field(default_factory=dict)
+    openclaw_config: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -213,6 +217,17 @@ def load_scenario(path: Path) -> ScenarioConfig:
     if scenario.runtime.kind not in {"docker", "host_direct"}:
         raise ValueError(
             f"invalid runtime.kind={scenario.runtime.kind!r}; expected 'docker' or 'host_direct'",
+        )
+    if scenario.runtime.reuse_container_name.strip() and scenario.runtime.kind != "docker":
+        raise ValueError("runtime.reuse_container_name is only supported for docker runtimes")
+    if scenario.runtime.network_mode not in {"bridge", "host"}:
+        raise ValueError(
+            "invalid runtime.network_mode="
+            f"{scenario.runtime.network_mode!r}; expected 'bridge' or 'host'",
+        )
+    if scenario.runtime.reuse_container_name.strip() and scenario.runtime.container_port <= 0:
+        raise ValueError(
+            "docker reuse requires runtime.container_port to be the OpenClaw port inside the existing container",
         )
     scenario.scenario_path = str(path.resolve())
     if scenario.client.task_file.strip():

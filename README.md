@@ -16,6 +16,9 @@
 - 支持从 `tasks/*.md` 读取真实任务式 prompt，模拟更接近实际使用的交互延迟
 
 默认场景使用 `/context list`，因此不依赖模型 key。
+如果你要直接压 vLLM 的 OpenAI-compatible 接口，现在也可以在 scenario 里把
+`client.transport` 设成 `openai_chat_completions`，并填写 `runtime.endpoint_url`、
+`client.model` 和 `client.api_key`。
 本地 Docker 场景遵循当前推荐的 WSL 策略：优先使用 `docker stats` + `pidstat`，
 `perf` 默认关闭，`strace` 也默认关闭，等需要短窗口 syscall 排查时再单独启用。
 `docker_single_100_summary.json` 和 `docker_multi_100_summary.json` 现在也会开启
@@ -237,6 +240,7 @@ python -m openclaw_harness run --scenario scenarios/docker_multi_task_semianalys
 - `scenario.resolved.json` 会写出最终使用的 `task_file`、`task_id`、`task_name` 和 `resolved_prompt`。
 - `meta.json`、`summary.json`、`latency.csv` 会附带任务元数据，方便后续归档和对比。
 - `host_direct` 场景默认假设 harness 和 gateway 跑在同一台 VPS 上。
+- `host_direct + openai_chat_completions` 场景默认假设 harness 和 vLLM 服务跑在同一台机器上。
 - `host_direct` 会尝试根据配置的监听端口自动发现 `host_pid`。
 - 只有在你想覆盖自动发现结果时，才需要手动填写 `runtime.host_pid`。
 - 如果没有安装 `pidstat`、`strace` 或 `perf`，harness 会把对应 collector 标记为 `skipped`，但整次运行仍会继续完成。

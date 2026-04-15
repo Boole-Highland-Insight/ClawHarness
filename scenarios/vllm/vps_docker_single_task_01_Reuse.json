@@ -1,0 +1,58 @@
+{
+  "name": "vps-docker-single-vllm-qwen3-32b-00-3",
+  "runtime": {
+    "kind": "docker",
+    "reuse_container_name": "openclaw-bench-vps-v2-vps-docker-single-vllm-qwen3-32b-00-3-light-16e299ba",
+    "container_port": 19189,
+    "gateway_token": "openclaw-bench-token"
+  },
+  "client": {
+    "role": "operator",
+    "message": "",
+    "task_file": "../../tasks/task_01_openclaw_comprehension.md",
+    "session_prefix": "vps-docker-single-vllm-qwen3-32b-00-3",
+    "session_mode": "per_worker",
+    "history_limit": 20,
+    "wait_timeout_ms": 60000,
+    "send_timeout_ms": 15000
+  },
+  "load": {
+    "concurrency": 1,
+    "requests_per_worker": 3,
+    "worker_stagger_ms": 0,
+    "request_pause_ms": 0
+  },
+  "collectors": {
+    "docker_stats": {
+      "enabled": true,
+      "interval_ms": 1000
+    },
+    "pidstat": {
+      "enabled": true,
+      "interval_sec": 1
+    },
+    "strace": {
+      "enabled": false
+    },
+    "node_trace": {
+      "enabled": true
+    },
+    "iostat": {
+      "enabled": true,
+      "interval_sec": 1
+    },
+    "perf_stat": {
+      "enabled": false
+    },
+    "perf_record": {
+      "enabled": false
+    },
+    "vmstat": {
+      "enabled": true,
+      "interval_sec": 1
+    }
+  },
+  "artifacts": {
+    "summary_only": true
+  }
+}

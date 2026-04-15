@@ -30,6 +30,10 @@
 - `container_name_base`
   - 容器名的前缀。
   - harness 会在后面拼上场景名和随机后缀，避免重名。
+- `reuse_container_name`
+  - 复用已存在的 Docker 容器名。
+  - 非空时，harness 不再新建或删除容器，而是直接连接这个容器里的 gateway。
+  - 这种模式下，`container_port` 表示容器内 OpenClaw gateway 的监听端口。
 - `host`
   - 宿主机地址。
   - harness 访问 gateway 的目标主机。
@@ -38,6 +42,8 @@
   - harness 会连这个端口发 WebSocket 请求。
 - `container_port`
   - 容器内部 gateway 监听的端口。
+  - 当 `reuse_container_name` 非空时，harness 会用它配合 `docker inspect` 出来的容器 IP
+    或 host 网络来构造连接地址。
 - `gateway_bind`
   - gateway 绑定方式。
   - 控制容器内服务对外可见的监听范围。
@@ -185,4 +191,3 @@
 - 新建 task 时，先复制 `tasks/TASK_TEMPLATE.md`，再在 scenario 里引用它。
 - 如果你不想用 task 文件，就只保留 `client.message`。
 - 运行前可以先看 `scenario.resolved.json`，确认最终发给 gateway 的是哪个 prompt。
-

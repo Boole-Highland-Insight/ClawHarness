@@ -1,0 +1,106 @@
+{
+  "name": "vps-docker-single-qwen32b-00-100",
+  "runtime": {
+    "kind": "docker",
+    "image": "openclaw:bench-vps",
+    "container_name_base": "openclaw-bench-vps-v2",
+    "host": "127.0.0.1",
+    "host_port": 19189,
+    "container_port": 19189,
+    "network_mode": "host",
+    "gateway_bind": "loopback",
+    "gateway_token": "openclaw-bench-token",
+    "build_image_if_missing": true,
+    "force_rebuild": false,
+    "skip_channels": true,
+    "keep_container": false,
+    "startup_timeout_sec": 240,
+    "env": {
+      "VLLM_API_KEY": "sk-local-ascend"
+    },
+    "openclaw_config": {
+      "agents": {
+        "defaults": {
+          "model": {
+            "primary": "vllm/qwen3-32b"
+          }
+        }
+      },
+      "models": {
+        "providers": {
+          "vllm": {
+            "baseUrl": "http://127.0.0.1:18000/v1",
+            "apiKey": "${VLLM_API_KEY}",
+            "api": "openai-completions",
+            "models": [
+              {
+                "id": "qwen3-32b",
+                "name": "Local vLLM Qwen3-32B",
+                "reasoning": false,
+                "input": [
+                  "text"
+                ],
+                "cost": {
+                  "input": 0,
+                  "output": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0
+                },
+                "contextWindow": 32768, 
+                "maxTokens": 1024 
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "client": {
+    "role": "operator",
+    "message": "/context list",
+    "session_prefix": "vps-docker-single-qwen32b-00-100",
+    "session_mode": "per_worker",
+    "history_limit": 20,
+    "wait_timeout_ms": 60000,
+    "send_timeout_ms": 15000
+  },
+  "load": {
+    "concurrency": 1,
+    "requests_per_worker": 100,
+    "worker_stagger_ms": 0,
+    "request_pause_ms": 0
+  },
+  "collectors": {
+    "docker_stats": {
+      "enabled": true,
+      "interval_ms": 1000
+    },
+    "pidstat": {
+      "enabled": true,
+      "interval_sec": 1
+    },
+    "strace": {
+      "enabled": false
+    },
+    "node_trace": {
+      "enabled": true
+    },
+    "iostat": {
+      "enabled": true,
+      "interval_sec": 1
+    },
+    "perf_stat": {
+      "enabled": false
+    },
+    "perf_record": {
+      "enabled": false
+    },
+    "vmstat": {
+      "enabled": true,
+      "interval_sec": 1
+    }
+  },
+  "artifacts": {
+    "summary_only": false
+  }
+}
