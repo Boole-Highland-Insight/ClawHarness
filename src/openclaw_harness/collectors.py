@@ -132,6 +132,70 @@ class DockerStatsCollector(BaseCollector):
                 self._stop_event.wait(self.interval_seconds)
 
 
+class NpuSmiCollector(BaseCollector):
+    def __init__(
+        self,
+        *,
+        enabled: bool,
+        interval_sec: int,
+        card_ids: list[int],
+        output_dir: Path,
+    ) -> None:
+        super().__init__("npu_smi", enabled)
+        self.interval_seconds = max(1, int(interval_sec))
+        self.card_ids = [int(card_id) for card_id in card_ids]
+        self.output_path = output_dir / "npu_smi.log"
+        self._stop_event = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> None:
+        if not self.status.enabled:
+            self.status.status = "skipped"
+            self.status.detail = "disabled in scenario"
+            return
+        if not self.card_ids:
+            self.status.status = "skipped"
+            self.status.detail = "card_ids is empty"
+            return
+        if not command_exists("npu-smi"):
+            self.status.status = "skipped"
+            self.status.detail = "npu-smi is not installed"
+            return
+        self.output_path.parent.mkdir(parents=True, exist_ok=True)
+        self.status.files.append(str(self.output_path))
+        self.status.status = "started"
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        if self.status.status != "started":
+            return
+        self._stop_event.set()
+        if self._thread is not None:
+            self._thread.join(timeout=10)
+        self.status.status = "completed"
+
+    def _run(self) -> None:
+        with self.output_path.open("w", encoding="utf-8") as handle:
+            while not self._stop_event.is_set():
+                handle.write(f"{iso_now()}\n")
+                for card_id in self.card_ids:
+                    handle.write(f"Requested NPU Index:{card_id}\n")
+                    sample = run_command(
+                        ["npu-smi", "info", "-t", "usages", "-i", str(card_id)],
+                        check=False,
+                    )
+                    output_lines = (sample.stdout or sample.stderr or "").splitlines()
+                    for raw_line in output_lines:
+                        line = raw_line.strip()
+                        if line:
+                            handle.write(f"{line}\n")
+                    handle.write("\n")
+                handle.write("\n")
+                handle.flush()
+                self._stop_event.wait(self.interval_seconds)
+
+
 class BackgroundCommandCollector(BaseCollector):
     def __init__(
         self,
@@ -334,6 +398,14 @@ def build_collectors(
             enabled=config.vmstat.enabled,
             command=["vmstat", "-n", str(config.vmstat.interval_sec)],
             output_path=vmstat_output,
+        ),
+    )
+    collectors.append(
+        NpuSmiCollector(
+            enabled=config.npu_smi.enabled,
+            interval_sec=config.npu_smi.interval_sec,
+            card_ids=config.npu_smi.card_ids,
+            output_dir=output_dir,
         ),
     )
     return collectors

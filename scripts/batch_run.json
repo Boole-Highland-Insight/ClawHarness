@@ -23,6 +23,20 @@
       "message": ""
     }
   ],
+  "override_variants": [
+    {
+      "key": "worker",
+      "overrides": {
+        "client.session_mode": "per_worker"
+      }
+    },
+    {
+      "key": "request",
+      "overrides": {
+        "client.session_mode": "per_request"
+      }
+    }
+  ],
   "run_variants": [
     {
       "key": "single-20",

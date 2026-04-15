@@ -183,6 +183,7 @@ def build_resource_profile_row(summary: dict[str, Any], run_dir: Path) -> dict[s
     pidstat = nested_get(summary, ["collector_analysis", "pidstat", "sections"], {})
     iostat = nested_get(summary, ["collector_analysis", "iostat"], {})
     vmstat = nested_get(summary, ["collector_analysis", "vmstat"], {})
+    npu_smi = nested_get(summary, ["collector_analysis", "npu_smi"], {})
     perf_stat = nested_get(summary, ["collector_analysis", "perf_stat"], {})
     strace = nested_get(summary, ["collector_analysis", "strace"], {})
     node_trace = nested_get(summary, ["collector_analysis", "node_trace"], {})
@@ -274,6 +275,12 @@ def build_resource_profile_row(summary: dict[str, Any], run_dir: Path) -> dict[s
             ["key_metric_summaries", "context_switches_per_s"],
         ),
         "vmstat_run_queue_mean": metric_summary_mean(vmstat, ["key_metric_summaries", "run_queue"]),
+        "npu_utilization_mean": metric_summary_mean(npu_smi, ["key_metric_summaries", "npu_utilization_pct"]),
+        "npu_hbm_usage_mean": metric_summary_mean(npu_smi, ["key_metric_summaries", "hbm_usage_rate_pct"]),
+        "npu_aicore_usage_mean": metric_summary_mean(npu_smi, ["key_metric_summaries", "aicore_usage_rate_pct"]),
+        "npu_aivector_usage_mean": metric_summary_mean(npu_smi, ["key_metric_summaries", "aivector_usage_rate_pct"]),
+        "npu_aicpu_usage_mean": metric_summary_mean(npu_smi, ["key_metric_summaries", "aicpu_usage_rate_pct"]),
+        "npu_ctrlcpu_usage_mean": metric_summary_mean(npu_smi, ["key_metric_summaries", "ctrlcpu_usage_rate_pct"]),
         "perf_cache_misses_mean": metric_summary_mean(perf_stat, ["key_metric_summaries", "cache_misses"]),
         "perf_context_switches_mean": metric_summary_mean(
             perf_stat,
@@ -430,6 +437,22 @@ def build_peak_profile_row(summary: dict[str, Any]) -> dict[str, Any]:
         "vmstat_context_switches_peak_t_sec": time_series_peak_t_sec(
             collector,
             ["vmstat", "key_time_series", "context_switches_per_s"],
+        ),
+        "npu_utilization_peak": time_series_peak_value(
+            collector,
+            ["npu_smi", "key_time_series", "npu_utilization_pct"],
+        ),
+        "npu_utilization_peak_t_sec": time_series_peak_t_sec(
+            collector,
+            ["npu_smi", "key_time_series", "npu_utilization_pct"],
+        ),
+        "npu_hbm_usage_peak": time_series_peak_value(
+            collector,
+            ["npu_smi", "key_time_series", "hbm_usage_rate_pct"],
+        ),
+        "npu_hbm_usage_peak_t_sec": time_series_peak_t_sec(
+            collector,
+            ["npu_smi", "key_time_series", "hbm_usage_rate_pct"],
         ),
         "perf_context_switches_peak": time_series_peak_value(
             collector,
@@ -1242,6 +1265,25 @@ def build_pair_outputs(
             "pidstat_nvcswch_per_s_mean": "nvcswch_per_s",
         }
     )
+    npu_df = profile_df[
+        [
+            "npu_utilization_mean",
+            "npu_hbm_usage_mean",
+            "npu_aicore_usage_mean",
+            "npu_aivector_usage_mean",
+            "npu_aicpu_usage_mean",
+            "npu_ctrlcpu_usage_mean",
+        ]
+    ].rename(
+        columns={
+            "npu_utilization_mean": "utilization_pct",
+            "npu_hbm_usage_mean": "hbm_usage_pct",
+            "npu_aicore_usage_mean": "aicore_usage_pct",
+            "npu_aivector_usage_mean": "aivector_usage_pct",
+            "npu_aicpu_usage_mean": "aicpu_usage_pct",
+            "npu_ctrlcpu_usage_mean": "ctrlcpu_usage_pct",
+        }
+    )
     phase_table_df = phase_df
     tail_table_df = tail_df
     disk_df = profile_df[
@@ -1305,6 +1347,7 @@ def build_pair_outputs(
         "latency_tail": tail_df,
         "container_metrics": container_df,
         "process_metrics": process_df,
+        "npu_metrics": npu_df,
         "disk_metrics": disk_df,
         "system_metrics": system_df,
         "timeline_peaks": peak_table_df,
@@ -1464,6 +1507,38 @@ def build_pair_outputs(
             label_b=right_name,
             title="Interrupt Timeline",
             output_path=pair_dir / "figures" / "interrupts_timeline.png",
+        )
+        plot_time_series_panels(
+            panel_specs=[
+                {
+                    "subtitle": "NPU Utilization (Avg 16 Chips)",
+                    "ylabel": "percent",
+                    "left": time_series_points(left_summary, ["collector_analysis", "npu_smi", "key_time_series", "npu_utilization_pct"]),
+                    "right": time_series_points(right_summary, ["collector_analysis", "npu_smi", "key_time_series", "npu_utilization_pct"]),
+                },
+                {
+                    "subtitle": "HBM Usage Rate (Avg 16 Chips)",
+                    "ylabel": "percent",
+                    "left": time_series_points(left_summary, ["collector_analysis", "npu_smi", "key_time_series", "hbm_usage_rate_pct"]),
+                    "right": time_series_points(right_summary, ["collector_analysis", "npu_smi", "key_time_series", "hbm_usage_rate_pct"]),
+                },
+                {
+                    "subtitle": "AICore Usage Rate (Avg 16 Chips)",
+                    "ylabel": "percent",
+                    "left": time_series_points(left_summary, ["collector_analysis", "npu_smi", "key_time_series", "aicore_usage_rate_pct"]),
+                    "right": time_series_points(right_summary, ["collector_analysis", "npu_smi", "key_time_series", "aicore_usage_rate_pct"]),
+                },
+                {
+                    "subtitle": "CtrlCPU Usage Rate (Avg 16 Chips)",
+                    "ylabel": "percent",
+                    "left": time_series_points(left_summary, ["collector_analysis", "npu_smi", "key_time_series", "ctrlcpu_usage_rate_pct"]),
+                    "right": time_series_points(right_summary, ["collector_analysis", "npu_smi", "key_time_series", "ctrlcpu_usage_rate_pct"]),
+                },
+            ],
+            label_a=left_name,
+            label_b=right_name,
+            title="NPU Load Timeline",
+            output_path=pair_dir / "figures" / "npu_load_timeline.png",
         )
         plot_time_series_panels(
             panel_specs=[
@@ -1656,6 +1731,7 @@ def build_pair_outputs(
         ("Memory Load Timeline", pair_dir / "figures" / "mem_load_timeline.png"),
         ("I/O Load Timeline", pair_dir / "figures" / "io_load_timeline.png"),
         ("Interrupt Timeline", pair_dir / "figures" / "interrupts_timeline.png"),
+        ("NPU Load Timeline", pair_dir / "figures" / "npu_load_timeline.png"),
         ("Context Switch Timeline", pair_dir / "figures" / "context_switch_timeline.png"),
         ("strace Timeline", pair_dir / "figures" / "strace_timeline.png"),
         ("strace Mean Duration", pair_dir / "figures" / "strace_mean_duration_ms.png"),
@@ -1705,6 +1781,10 @@ def build_pair_outputs(
             "**Process Metrics Table**",
             "",
             dataframe_to_markdown(process_df),
+            "",
+            "**NPU Metrics Table**",
+            "",
+            dataframe_to_markdown(npu_df),
             "",
             "**Disk Metrics Table**",
             "",

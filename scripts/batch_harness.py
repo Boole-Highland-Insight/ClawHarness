@@ -38,6 +38,12 @@ class RunVariant:
 
 
 @dataclass(frozen=True, slots=True)
+class OverrideVariant:
+    key: str
+    overrides: tuple[OverrideSpec, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class BatchConfig:
     config_path: Path
     template_scenario: Path
@@ -51,6 +57,7 @@ class BatchConfig:
     dry_run: bool
     base_overrides: tuple[OverrideSpec, ...]
     client_variants: tuple[ClientVariant, ...]
+    override_variants: tuple[OverrideVariant, ...]
     run_variants: tuple[RunVariant, ...]
 
 
@@ -206,6 +213,25 @@ def parse_run_variants(raw: Any) -> tuple[RunVariant, ...]:
     return tuple(variants)
 
 
+def parse_override_variants(raw: Any) -> tuple[OverrideVariant, ...]:
+    if raw is None:
+        return (OverrideVariant(key="", overrides=()),)
+    if not isinstance(raw, list) or not raw:
+        raise ValueError("override_variants must be a non-empty JSON array")
+
+    variants: list[OverrideVariant] = []
+    for index, item in enumerate(raw, start=1):
+        label = f"override_variants[{index}]"
+        if not isinstance(item, dict):
+            raise ValueError(f"{label} must be a JSON object")
+        key = normalize_tag(parse_string(item.get("key"), label=f"{label}.key"), label=f"{label}.key")
+        overrides = parse_override_mapping(item.get("overrides"), label=f"{label}.overrides")
+        if not overrides:
+            raise ValueError(f"{label}.overrides must define at least one override")
+        variants.append(OverrideVariant(key=key, overrides=overrides))
+    return tuple(variants)
+
+
 def load_batch_config(path: Path) -> BatchConfig:
     raw = load_json(path)
     template_scenario = resolve_repo_path(
@@ -239,6 +265,7 @@ def load_batch_config(path: Path) -> BatchConfig:
         dry_run=parse_bool(raw.get("dry_run"), label="dry_run", default=False),
         base_overrides=parse_override_mapping(raw.get("base_overrides"), label="base_overrides"),
         client_variants=parse_client_variants(raw.get("client_variants")),
+        override_variants=parse_override_variants(raw.get("override_variants")),
         run_variants=parse_run_variants(raw.get("run_variants")),
     )
 
@@ -282,8 +309,17 @@ def parse_list_index(token: str, dotted_path: str) -> int:
     return int(token)
 
 
-def build_variant_slug(*, index: int, client_key: str, run_key: str, run_tag: str) -> str:
+def build_variant_slug(
+    *,
+    index: int,
+    client_key: str,
+    run_key: str,
+    override_key: str,
+    run_tag: str,
+) -> str:
     parts = [f"{index:02d}", client_key, run_key]
+    if override_key:
+        parts.append(override_key)
     if run_tag:
         parts.append(run_tag)
     return "-".join(parts)
@@ -361,51 +397,58 @@ def write_generated_scenarios(config: BatchConfig, *, batch_dir: Path) -> list[d
 
     for client_variant in config.client_variants:
         for run_variant in config.run_variants:
-            file_suffix = build_variant_slug(
-                index=sequence,
-                client_key=client_variant.key,
-                run_key=run_variant.key,
-                run_tag=config.run_tag,
-            )
-            identity_suffix = run_variant.key
-            if config.run_tag:
-                identity_suffix = f"{identity_suffix}-{config.run_tag}"
-            overrides = [
-                *config.base_overrides,
-                *client_variant.overrides,
-                *run_variant.overrides,
-            ]
-            payload = build_variant_payload(
-                base_payload=base_payload,
-                overrides=overrides,
-                basename=config.basename,
-                identity_suffix=identity_suffix,
-                fallback_suffix=file_suffix,
-            )
-            generated_name = f"{file_suffix}.json"
-            generated_path = batch_dir / generated_name
-            generated_path.write_text(
-                json.dumps(payload, indent=2, ensure_ascii=True) + "\n",
-                encoding="utf-8",
-            )
-            run_specs.append(
-                {
-                    "index": sequence,
-                    "client_key": client_variant.key,
-                    "run_key": run_variant.key,
-                    "generated_path": str(generated_path),
-                    "scenario_name": payload["name"],
-                    "session_prefix": payload["client"]["session_prefix"],
-                    "overrides": {spec.path: spec.value for spec in overrides},
-                    "command": build_command(
-                        python_bin=config.python_bin,
-                        scenario_path=generated_path,
-                        output_root=config.output_root,
-                        keep_runtime=config.keep_runtime,
-                    ),
-                },
-            )
-            sequence += 1
+            for override_variant in config.override_variants:
+                file_suffix = build_variant_slug(
+                    index=sequence,
+                    client_key=client_variant.key,
+                    run_key=run_variant.key,
+                    override_key=override_variant.key,
+                    run_tag=config.run_tag,
+                )
+                identity_parts = [run_variant.key]
+                if override_variant.key:
+                    identity_parts.append(override_variant.key)
+                if config.run_tag:
+                    identity_parts.append(config.run_tag)
+                identity_suffix = "-".join(identity_parts)
+                overrides = [
+                    *config.base_overrides,
+                    *client_variant.overrides,
+                    *run_variant.overrides,
+                    *override_variant.overrides,
+                ]
+                payload = build_variant_payload(
+                    base_payload=base_payload,
+                    overrides=overrides,
+                    basename=config.basename,
+                    identity_suffix=identity_suffix,
+                    fallback_suffix=file_suffix,
+                )
+                generated_name = f"{file_suffix}.json"
+                generated_path = batch_dir / generated_name
+                generated_path.write_text(
+                    json.dumps(payload, indent=2, ensure_ascii=True) + "\n",
+                    encoding="utf-8",
+                )
+                run_specs.append(
+                    {
+                        "index": sequence,
+                        "client_key": client_variant.key,
+                        "run_key": run_variant.key,
+                        "override_key": override_variant.key,
+                        "generated_path": str(generated_path),
+                        "scenario_name": payload["name"],
+                        "session_prefix": payload["client"]["session_prefix"],
+                        "overrides": {spec.path: spec.value for spec in overrides},
+                        "command": build_command(
+                            python_bin=config.python_bin,
+                            scenario_path=generated_path,
+                            output_root=config.output_root,
+                            keep_runtime=config.keep_runtime,
+                        ),
+                    },
+                )
+                sequence += 1
 
     manifest_path = batch_dir / "manifest.json"
     manifest_path.write_text(
@@ -437,9 +480,12 @@ def run_batch(
 
     for spec in run_specs:
         command = list(spec["command"])
+        combo_parts = [spec["client_key"], spec["run_key"]]
+        if spec["override_key"]:
+            combo_parts.append(spec["override_key"])
         print(
             f"[{spec['index']:02d}/{len(run_specs):02d}] "
-            f"{spec['client_key']} + {spec['run_key']} -> {spec['scenario_name']}"
+            f"{' + '.join(combo_parts)} -> {spec['scenario_name']}"
         )
         print(f"  config          : {config.config_path}")
         print(f"  template        : {config.template_scenario}")

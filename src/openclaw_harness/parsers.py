@@ -200,6 +200,14 @@ def parse_collector_artifacts(
             vmstat.status.files.extend(path for path in parsed.files if path not in vmstat.status.files)
             analyses[parsed.name] = parsed.summary
 
+    npu_smi = by_name.get("npu_smi")
+    npu_smi_log = output_dir / "npu_smi.log"
+    if npu_smi is not None and npu_smi_log.exists():
+        parsed = parse_npu_smi_log(npu_smi_log, output_dir=output_dir)
+        if parsed is not None:
+            npu_smi.status.files.extend(path for path in parsed.files if path not in npu_smi.status.files)
+            analyses[parsed.name] = parsed.summary
+
     return analyses
 
 
@@ -856,6 +864,7 @@ def parse_node_trace_files(paths: list[Path], *, output_dir: Path) -> ParsedArti
         {"path": path, "count": path_count.get(path, 0), "total_duration_ms": total_duration_ms}
         for path, total_duration_ms in sorted(path_duration_ms.items(), key=lambda item: item[1], reverse=True)[:10]
     ]
+    
     path_categories = {
         category: {
             "count": count,
@@ -1396,6 +1405,169 @@ def parse_vmstat_log(path: Path, *, output_dir: Path) -> ParsedArtifact | None:
     summary_path = output_dir / "vmstat.summary.json"
     write_json(summary_path, summary)
     return ParsedArtifact(name="vmstat", files=[str(parsed_path), str(summary_path)], summary=summary)
+    
+def parse_npu_smi_log(path: Path, *, output_dir: Path) -> ParsedArtifact | None:
+    chip_rows: list[dict[str, Any]] = []
+    rows_by_timestamp: dict[str, list[dict[str, Any]]] = {}
+    sample_order: list[str] = []
+    metric_keys: set[str] = set()
+
+    current_timestamp = ""
+    current_card: int | None = None
+    current_npu_id: int | None = None
+    current_metric_values: dict[str, float] = {}
+
+    for raw_line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+
+        if stripped.startswith("Requested NPU Index:"):
+            current_card = _parse_int_suffix(stripped, prefix="Requested NPU Index:")
+            current_npu_id = None
+            current_metric_values = {}
+            continue
+
+        timestamp_candidate = _parse_datetime_maybe(stripped)
+        if timestamp_candidate is not None and ":" not in stripped.split("T")[-1]:
+            # Skip pure-date lines that occasionally appear in partially-written logs.
+            continue
+        if timestamp_candidate is not None and ":" in stripped:
+            current_timestamp = stripped
+            if current_timestamp not in rows_by_timestamp:
+                rows_by_timestamp[current_timestamp] = []
+                sample_order.append(current_timestamp)
+            continue
+
+        npu_id = _parse_int_suffix(stripped, prefix="NPU ID:")
+        if npu_id is not None:
+            current_npu_id = npu_id
+            continue
+
+        chip_id = _parse_int_suffix(stripped, prefix="Chip ID:")
+        if chip_id is not None:
+            if current_timestamp and current_card is not None:
+                row = {
+                    "timestamp": current_timestamp,
+                    "card_id": current_card,
+                    "npu_id": current_npu_id,
+                    "chip_id": chip_id,
+                }
+                row.update(current_metric_values)
+                metric_keys.update(current_metric_values.keys())
+                chip_rows.append(row)
+                rows_by_timestamp.setdefault(current_timestamp, []).append(row)
+            current_metric_values = {}
+            continue
+
+        metric_match = re.match(r"^(?P<name>[^:]+\(%\))\s*:\s*(?P<value>[-+]?[0-9]+(?:\.[0-9]+)?)$", stripped)
+        if metric_match is None:
+            continue
+        metric_name = metric_match.group("name").strip()
+        metric_value = _parse_number_maybe(metric_match.group("value"))
+        if not isinstance(metric_value, (int, float)):
+            continue
+        normalized_metric_name = _normalize_npu_metric_name(metric_name)
+        current_metric_values[normalized_metric_name] = float(metric_value)
+
+    if not chip_rows or not sample_order or not metric_keys:
+        return None
+
+    for row in chip_rows:
+        for metric_key in metric_keys:
+            row.setdefault(metric_key, "")
+
+    parsed_path = output_dir / "npu_smi.parsed.csv"
+    _write_csv(parsed_path, chip_rows)
+
+    parsed_time_by_timestamp = {
+        timestamp: _parse_datetime_maybe(timestamp)
+        for timestamp in sample_order
+    }
+    valid_times = [parsed_time_by_timestamp[timestamp] for timestamp in sample_order if parsed_time_by_timestamp[timestamp] is not None]
+    base_time = min(valid_times) if valid_times else None
+
+    chips_per_sample: list[float] = []
+    time_series: dict[str, dict[str, Any]] = {}
+    metric_summaries: dict[str, dict[str, Any]] = {}
+    metrics: dict[str, dict[str, float]] = {}
+
+    for metric_key in sorted(metric_keys):
+        points: list[dict[str, float]] = []
+        for sample_index, timestamp in enumerate(sample_order):
+            sample_rows = rows_by_timestamp.get(timestamp, [])
+            values = [
+                float(row[metric_key])
+                for row in sample_rows
+                if isinstance(row.get(metric_key), (int, float))
+            ]
+            if not values:
+                continue
+            parsed_time = parsed_time_by_timestamp.get(timestamp)
+            if parsed_time is not None and base_time is not None:
+                t_sec = float((parsed_time - base_time).total_seconds())
+            else:
+                t_sec = float(sample_index)
+            points.append({"t_sec": t_sec, "value": float(fmean(values))})
+        point_values = [float(point["value"]) for point in points]
+        metrics[metric_key] = _summarize_present_numeric(point_values)
+        metric_summaries[metric_key] = _metric_summary_entry(
+            summary=metrics[metric_key],
+            unit="percent",
+            source_field=f"avg(16 chips: {metric_key})",
+        )
+        time_series[metric_key] = _time_series_entry(
+            points=points,
+            unit="percent",
+            source_field=f"avg(16 chips: {metric_key})",
+        )
+
+    for timestamp in sample_order:
+        chips_per_sample.append(float(len(rows_by_timestamp.get(timestamp, []))))
+
+    key_metric_names = [
+        "npu_utilization_pct",
+        "hbm_usage_rate_pct",
+        "aicore_usage_rate_pct",
+        "aivector_usage_rate_pct",
+        "aicpu_usage_rate_pct",
+        "ctrlcpu_usage_rate_pct",
+    ]
+    key_metrics = {
+        name: metrics.get(name, {})
+        for name in key_metric_names
+    }
+    key_metric_summaries = {
+        name: metric_summaries.get(
+            name,
+            _metric_summary_entry(summary={}, unit="percent", source_field=f"avg(16 chips: {name})"),
+        )
+        for name in key_metric_names
+    }
+    key_time_series = {
+        name: time_series.get(
+            name,
+            _time_series_entry(points=[], unit="percent", source_field=f"avg(16 chips: {name})"),
+        )
+        for name in key_metric_names
+    }
+
+    summary = {
+        "raw_log": str(path),
+        "rows": len(chip_rows),
+        "sample_count": len(sample_order),
+        "chips_per_sample": _summarize_numeric(chips_per_sample),
+        "full_16_chip_sample_count": sum(1 for value in chips_per_sample if int(value) == 16),
+        "metrics": metrics,
+        "metric_summaries": metric_summaries,
+        "time_series": time_series,
+        "key_metrics": key_metrics,
+        "key_metric_summaries": key_metric_summaries,
+        "key_time_series": key_time_series,
+    }
+    summary_path = output_dir / "npu_smi.summary.json"
+    write_json(summary_path, summary)
+    return ParsedArtifact(name="npu_smi", files=[str(parsed_path), str(summary_path)], summary=summary)
 
 
 def derive_healthcheck_url(ws_url: str) -> str:
@@ -1788,6 +1960,30 @@ def _parse_strace_line(line: str) -> dict[str, Any] | None:
 def _parse_hhmmss_to_seconds(value: str) -> float:
     hour_text, minute_text, second_text = value.split(":", 2)
     return (int(hour_text) * 3600.0) + (int(minute_text) * 60.0) + float(second_text)
+
+
+def _parse_int_suffix(text: str, *, prefix: str) -> int | None:
+    normalized_prefix = prefix.rstrip(":").strip()
+    compact_prefix = f"{normalized_prefix}:"
+    value: str | None = None
+    if text.startswith(compact_prefix):
+        value = text[len(compact_prefix) :].strip()
+    else:
+        match = re.match(rf"^{re.escape(normalized_prefix)}\s*:\s*(.+)$", text)
+        if match is None:
+            return None
+        value = match.group(1).strip()
+    parsed = _parse_number_maybe(value)
+    if isinstance(parsed, int):
+        return parsed
+    if isinstance(parsed, float):
+        return int(parsed)
+    return None
+
+
+def _normalize_npu_metric_name(name: str) -> str:
+    normalized = name.strip().replace("(%)", "_pct")
+    return _normalize_metric_key(normalized)
 
 
 def _perf_script_thread_name(header: str) -> str:

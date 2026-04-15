@@ -18,7 +18,7 @@ MARKERS = ["o", "s", "^", "D", "x", "P", "*"]
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Export comparison charts and tables for one or more scenario triplets.",
+        description="Export system-level comparison charts and tables for one or more scenario triplets.",
     )
     parser.add_argument(
         "--tri",
@@ -67,6 +67,36 @@ def with_scenario_label(label: str, row: dict[str, Any]) -> dict[str, Any]:
     labeled_row = dict(row)
     labeled_row["scenario"] = label
     return labeled_row
+
+
+def build_machine_profile_row(summary: dict[str, Any]) -> dict[str, Any]:
+    vmstat = pair.nested_get(summary, ["collector_analysis", "vmstat"], {})
+    iostat = pair.nested_get(summary, ["collector_analysis", "iostat"], {})
+    return {
+        "cpu_user_pct_mean": pair.metric_summary_mean(vmstat, ["metric_summaries", "us"]),
+        "cpu_system_pct_mean": pair.metric_summary_mean(vmstat, ["metric_summaries", "sy"]),
+        "cpu_iowait_pct_mean": pair.metric_summary_mean(vmstat, ["metric_summaries", "wa"]),
+        "cpu_idle_pct_mean": pair.metric_summary_mean(vmstat, ["metric_summaries", "id"]),
+        "mem_free_kib_mean": pair.metric_summary_mean(vmstat, ["metric_summaries", "free"]),
+        "mem_buff_kib_mean": pair.metric_summary_mean(vmstat, ["metric_summaries", "buff"]),
+        "mem_cache_kib_mean": pair.metric_summary_mean(vmstat, ["metric_summaries", "cache"]),
+        "disk_pct_util_mean": pair.metric_summary_mean(iostat, ["key_metric_summaries", "pct_util"]),
+        "disk_w_await_ms_mean": pair.metric_summary_mean(iostat, ["key_metric_summaries", "w_await"]),
+        "disk_aqu_sz_mean": pair.metric_summary_mean(iostat, ["key_metric_summaries", "aqu_sz"]),
+        "interrupts_per_s_mean": pair.metric_summary_mean(
+            vmstat,
+            ["key_metric_summaries", "interrupts_per_s"],
+        ),
+        "context_switches_per_s_mean": pair.metric_summary_mean(
+            vmstat,
+            ["key_metric_summaries", "context_switches_per_s"],
+        ),
+        "run_queue_mean": pair.metric_summary_mean(vmstat, ["key_metric_summaries", "run_queue"]),
+        "blocked_processes_mean": pair.metric_summary_mean(
+            vmstat,
+            ["key_metric_summaries", "blocked_processes"],
+        ),
+    }
 
 
 def normalize_display_names(
@@ -233,7 +263,7 @@ def build_triplet_outputs(
             }
         )
 
-    tri_slug = pair.safe_slug("__vs__".join(scenario_names))
+    tri_slug = pair.safe_slug("__vs__".join(scenario_names) + "__sys")
     tri_dir = res_root / tri_slug
     if tri_dir.exists():
         if render_figures:
@@ -402,22 +432,34 @@ def build_triplet_outputs(
             "total_p99_ms": "total_p99",
         }
     )
-    container_df = profile_df[
+    machine_df = pd.DataFrame(
         [
-            "docker_cpu_percent_mean",
-            "docker_mem_percent_mean",
-            "docker_block_read_bytes_per_s_mean",
-            "docker_block_write_bytes_per_s_mean",
+            with_scenario_label(
+                str(record["display_name"]),
+                build_machine_profile_row(record["summary"]),
+            )
+            for record in summary_records
+        ]
+    ).set_index("scenario")
+    machine_cpu_mem_df = machine_df[
+        [
+            "cpu_user_pct_mean",
+            "cpu_system_pct_mean",
+            "cpu_iowait_pct_mean",
+            "cpu_idle_pct_mean",
+            "mem_free_kib_mean",
+            "mem_cache_kib_mean",
         ]
     ].rename(
         columns={
-            "docker_cpu_percent_mean": "cpu_percent",
-            "docker_mem_percent_mean": "mem_percent",
-            "docker_block_read_bytes_per_s_mean": "block_read_bytes_per_s",
-            "docker_block_write_bytes_per_s_mean": "block_write_bytes_per_s",
+            "cpu_user_pct_mean": "cpu_user_pct",
+            "cpu_system_pct_mean": "cpu_system_pct",
+            "cpu_iowait_pct_mean": "cpu_iowait_pct",
+            "cpu_idle_pct_mean": "cpu_idle_pct",
+            "mem_free_kib_mean": "mem_free_kib",
+            "mem_cache_kib_mean": "mem_cache_kib",
         }
     )
-    container_cpu_mem_df = container_df[["cpu_percent", "mem_percent"]]
     process_df = profile_df[
         [
             "pidstat_cpu_percent_mean",
@@ -515,7 +557,7 @@ def build_triplet_outputs(
         "run_timing": run_timing_df,
         "latency_phase_means": phase_df,
         "latency_tail": tail_df,
-        "container_metrics": container_df,
+        "machine_metrics": machine_df,
         "process_metrics": process_df,
         "npu_metrics": npu_df,
         "disk_metrics": disk_df,
@@ -587,10 +629,10 @@ def build_triplet_outputs(
             tri_dir / "figures" / "latency_tail.png",
         )
         pair.plot_dataframe(
-            container_cpu_mem_df,
-            "Container CPU and Memory",
+            machine_cpu_mem_df,
+            "System CPU and Memory",
             "mean value",
-            tri_dir / "figures" / "container_cpu_mem.png",
+            tri_dir / "figures" / "system_cpu_mem.png",
         )
         plot_latency_timeline_multi(
             [
@@ -616,19 +658,19 @@ def build_triplet_outputs(
         plot_time_series_panels_multi(
             panel_specs=[
                 {
-                    "subtitle": "Container CPU Percent",
+                    "subtitle": "System CPU User",
                     "ylabel": "percent",
                     "series": build_series(
                         summary_records,
-                        ["collector_analysis", "docker_stats", "time_series", "cpu_percent_value"],
+                        ["collector_analysis", "vmstat", "time_series", "us"],
                     ),
                 },
                 {
-                    "subtitle": "Process CPU Percent",
+                    "subtitle": "System CPU iowait",
                     "ylabel": "percent",
                     "series": build_series(
                         summary_records,
-                        ["collector_analysis", "pidstat", "sections", "cpu", "time_series", "pct_cpu"],
+                        ["collector_analysis", "vmstat", "time_series", "wa"],
                     ),
                 },
             ],
@@ -638,19 +680,19 @@ def build_triplet_outputs(
         plot_time_series_panels_multi(
             panel_specs=[
                 {
-                    "subtitle": "Container Memory Percent",
-                    "ylabel": "percent",
-                    "series": build_series(
-                        summary_records,
-                        ["collector_analysis", "docker_stats", "time_series", "mem_percent_value"],
-                    ),
-                },
-                {
-                    "subtitle": "Process RSS",
+                    "subtitle": "System Free Memory",
                     "ylabel": "KiB",
                     "series": build_series(
                         summary_records,
-                        ["collector_analysis", "pidstat", "sections", "memory", "time_series", "rss_kib"],
+                        ["collector_analysis", "vmstat", "time_series", "free"],
+                    ),
+                },
+                {
+                    "subtitle": "System Page Cache",
+                    "ylabel": "KiB",
+                    "series": build_series(
+                        summary_records,
+                        ["collector_analysis", "vmstat", "time_series", "cache"],
                     ),
                 },
             ],
@@ -660,11 +702,11 @@ def build_triplet_outputs(
         plot_time_series_panels_multi(
             panel_specs=[
                 {
-                    "subtitle": "Container Block Write Throughput",
-                    "ylabel": "bytes/sec",
+                    "subtitle": "Disk Write Throughput (Busiest Device)",
+                    "ylabel": "KiB/sec",
                     "series": build_series(
                         summary_records,
-                        ["collector_analysis", "docker_stats", "time_series", "block_write_bytes_per_s"],
+                        ["collector_analysis", "iostat", "key_time_series", "wkb_s"],
                     ),
                 },
                 {
@@ -988,7 +1030,7 @@ def build_triplet_outputs(
         ("Latency Overview", tri_dir / "figures" / "latency_overview.png"),
         ("Latency Phase Means", tri_dir / "figures" / "latency_phase_means.png"),
         ("Latency Tail", tri_dir / "figures" / "latency_tail.png"),
-        ("Container CPU and Memory", tri_dir / "figures" / "container_cpu_mem.png"),
+        ("System CPU and Memory", tri_dir / "figures" / "system_cpu_mem.png"),
         ("Latency Timeline", tri_dir / "figures" / "latency_timeline.png"),
         ("Actual Request Timeline", tri_dir / "figures" / "actual_request_timeline.png"),
         ("CPU Load Timeline", tri_dir / "figures" / "cpu_load_timeline.png"),
@@ -1043,9 +1085,9 @@ def build_triplet_outputs(
         "",
         pair.dataframe_to_markdown(tail_df),
         "",
-        "**Container Metrics Table**",
+        "**Machine Metrics Table**",
         "",
-        pair.dataframe_to_markdown(container_df),
+        pair.dataframe_to_markdown(machine_df),
         "",
         "**Process Metrics Table**",
         "",

@@ -258,6 +258,8 @@ def build_preflight_payload(
             target = "runtime workspace"
         elif collector.status.name == "vmstat":
             target = "host system"
+        elif collector.status.name == "npu_smi":
+            target = "host NPU devices"
         collector_targets.append(
             {
                 "name": collector.status.name,
@@ -349,6 +351,9 @@ def summary_only_keep_files() -> set[str]:
         "vmstat.log",
         "vmstat.parsed.csv",
         "vmstat.summary.json",
+        "npu_smi.log",
+        "npu_smi.parsed.csv",
+        "npu_smi.summary.json",
     }
 
 

@@ -86,6 +86,13 @@ class NodeTraceConfig:
 
 
 @dataclass(slots=True)
+class NpuSmiConfig:
+    enabled: bool = False
+    interval_sec: int = 1
+    card_ids: list[int] = field(default_factory=lambda: list(range(8)))
+
+
+@dataclass(slots=True)
 class CollectorsConfig:
     docker_stats: DockerStatsConfig = field(default_factory=DockerStatsConfig)
     pidstat: PidstatConfig = field(default_factory=PidstatConfig)
@@ -95,6 +102,7 @@ class CollectorsConfig:
     perf_record: PerfRecordConfig = field(default_factory=PerfRecordConfig)
     iostat: "IostatConfig" = field(default_factory=lambda: IostatConfig())
     vmstat: "VmstatConfig" = field(default_factory=lambda: VmstatConfig())
+    npu_smi: NpuSmiConfig = field(default_factory=NpuSmiConfig)
 
 
 @dataclass(slots=True)
@@ -211,6 +219,7 @@ def load_scenario(path: Path) -> ScenarioConfig:
     _merge_dataclass(collector_raw.get("perf_record"), scenario.collectors.perf_record)
     _merge_dataclass(collector_raw.get("iostat"), scenario.collectors.iostat)
     _merge_dataclass(collector_raw.get("vmstat"), scenario.collectors.vmstat)
+    _merge_dataclass(collector_raw.get("npu_smi"), scenario.collectors.npu_smi)
     if scenario.client.session_mode not in SESSION_MODES:
         raise ValueError(
             f"invalid session_mode={scenario.client.session_mode!r}; expected one of {SESSION_MODES}",

@@ -26,6 +26,7 @@ def probe_environment(*, scenario: ScenarioConfig, output_dir: Path) -> dict[str
         "iostat": _probe_tool("iostat", ["iostat", "-V"]),
         "vmstat": _probe_tool("vmstat", ["vmstat", "-V"]),
         "perf": _probe_tool("perf", ["perf", "--version"]),
+        "npu_smi": _probe_tool("npu-smi", ["npu-smi", "info", "-h"]),
     }
     install_hints = _build_install_hints(
         is_ubuntu=is_ubuntu,
@@ -65,6 +66,7 @@ def probe_environment(*, scenario: ScenarioConfig, output_dir: Path) -> dict[str
                 "vmstat": scenario.collectors.vmstat.enabled,
                 "perf_stat": scenario.collectors.perf_stat.enabled,
                 "perf_record": scenario.collectors.perf_record.enabled,
+                "npu_smi": scenario.collectors.npu_smi.enabled,
             },
         },
     }
@@ -202,6 +204,10 @@ def _build_recommended_collectors(
             "enabled": False,
             "reason": f"keep off by default; enable only for targeted profiling runs ({scenario_name})",
         },
+        "npu_smi": {
+            "enabled": False,
+            "reason": "enable when running on Ascend hosts and you need machine-level NPU utilization and HBM traces",
+        },
     }
 
 
@@ -219,6 +225,8 @@ def _build_notes(*, is_wsl: bool, tools: dict[str, dict[str, Any]]) -> list[str]
         notes.append(tools["vmstat"]["detail"] or "vmstat is not usable on this host.")
     if not tools["perf"]["usable"]:
         notes.append(tools["perf"]["detail"] or "perf is not usable on this host.")
+    if not tools["npu_smi"]["usable"]:
+        notes.append(tools["npu_smi"]["detail"] or "npu-smi is not usable on this host.")
     return notes
 
 

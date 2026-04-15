@@ -2,6 +2,7 @@
 .deps/
 .state/
 out/
+out-log/
 res/
 __pycache__/
 .pytest_cache/
