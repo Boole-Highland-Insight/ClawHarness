@@ -9,6 +9,7 @@ from .utils import summarize_ms, write_json
 
 LATENCY_FIELDS = [
     "scenario",
+    "instance_index",
     "task_id",
     "task_name",
     "worker_id",
@@ -45,17 +46,21 @@ def build_summary(rows: list[dict[str, Any]], *, scenario_name: str) -> dict[str
     send_latency = [float(row["send_latency_ms"]) for row in success_rows]
     wait_latency = [float(row["wait_latency_ms"]) for row in success_rows]
     history_latency = [float(row["history_latency_ms"]) for row in success_rows]
-    connect_by_worker: dict[int, float] = {}
+    connect_by_worker: dict[tuple[int, int], float] = {}
     for row in rows:
         worker_id = row.get("worker_id")
+        instance_index = row.get("instance_index", 0)
         connect_latency_ms = row.get("connect_latency_ms")
+        if not isinstance(instance_index, int):
+            instance_index = 0
         if not isinstance(worker_id, int):
             continue
-        if worker_id in connect_by_worker:
+        key = (instance_index, worker_id)
+        if key in connect_by_worker:
             continue
         if connect_latency_ms in (None, "", 0):
             continue
-        connect_by_worker[worker_id] = float(connect_latency_ms)
+        connect_by_worker[key] = float(connect_latency_ms)
     connect_latency = list(connect_by_worker.values())
     task_id = str(rows[0].get("task_id", "")) if rows else ""
     task_name = str(rows[0].get("task_name", "")) if rows else ""

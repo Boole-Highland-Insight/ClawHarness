@@ -1,0 +1,82 @@
+{
+  "template_scenario": "scenarios/vllm/vps_docker_single_light.json",
+  "basename": "vps-docker-qwen3-32b8x2",
+  "output_root": "out/batch_run_1",
+  "generated_root": ".state/generated_scenarios/batch_harness",
+  "python_bin": "python3",
+  "run_tag": "",
+  "keep_runtime": false,
+  "continue_on_error": false,
+  "dry_run": false,
+  "base_overrides": {
+    "client.message": ""
+  },
+  "client_variants": [
+    {
+      "key": "task-00-context-inventory",
+      "task_file": "tasks/task_00_context_inventory.md",
+      "message": ""
+    },
+    {
+      "key": "task-01-openclaw-comprehension",
+      "task_file": "tasks/task_01_openclaw_comprehension.md",
+      "message": ""
+    }
+  ],
+  "run_variants": [
+    {
+      "key": "single-20",
+      "overrides": {
+        "runtime.instance_num": 1,
+        "load.concurrency": 1,
+        "load.requests_per_worker": 20,
+        "load.worker_stagger_ms": 0
+      }
+    },
+    {
+      "key": "multi-5x4w-stag150",
+      "overrides": {
+        "runtime.instance_num": 1,
+        "load.concurrency": 4,
+        "load.requests_per_worker": 5,
+        "load.worker_stagger_ms": 150
+      }
+    },
+    {
+      "key": "multi-5x4w-stag300",
+      "overrides": {
+        "runtime.instance_num": 1,
+        "load.concurrency": 4,
+        "load.requests_per_worker": 5,
+        "load.worker_stagger_ms": 300
+      }
+    },
+    {
+      "key": "multi-5x4w-stag500",
+      "overrides": {
+        "runtime.instance_num": 1,
+        "load.concurrency": 4,
+        "load.requests_per_worker": 5,
+        "load.worker_stagger_ms": 500
+      }
+    },
+    {
+      "key": "single-inst-5x4i",
+      "overrides": {
+        "runtime.instance_num": 4,
+        "load.concurrency": 1,
+        "load.requests_per_worker": 5,
+        "load.worker_stagger_ms": 0
+      }
+    },
+    {
+      "key": "multi-inst-5x2ix2w",
+      "overrides": {
+        "runtime.instance_num": 2,
+        "load.concurrency": 2,
+        "load.requests_per_worker": 5,
+        "load.worker_stagger_ms": 0
+      }
+    }
+  ]
+}

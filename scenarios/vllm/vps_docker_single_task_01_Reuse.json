@@ -1,31 +1,26 @@
 {
-  "name": "vps-docker-single-task-00-500-light",
+  "name": "vps-docker-single-vllm-qwen3-32b-00-3",
   "runtime": {
     "kind": "docker",
-    "image": "openclaw:bench-local-v2",
-    "container_name_base": "openclaw-bench-vps-v2",
-    "host": "127.0.0.1",
-    "host_port": 19189,
-    "container_port": 18789,
-    "gateway_bind": "lan",
-    "gateway_token": "openclaw-bench-token",
-    "build_image_if_missing": false,
-    "force_rebuild": false,
-    "skip_channels": true,
-    "startup_timeout_sec": 240
+    "reuse_container_name": "openclaw-bench-vps-v2-vps-docker-single-vllm-qwen3-32b-00-2-light-7f277974",
+    "container_port": 19189,
+    "ws_url": "ws://127.0.0.1:19189",
+    "healthcheck_url": "http://127.0.0.1:19189/healthz",
+    "gateway_token": "openclaw-bench-token"
   },
   "client": {
     "role": "operator",
-    "message": "/context list",
-    "session_prefix": "vps-docker-single-task-00-500-light",
+    "message": "",
+    "task_file": "../../tasks/task_01_openclaw_comprehension.md",
+    "session_prefix": "vps-docker-single-vllm-qwen3-32b-00-3",
     "session_mode": "per_worker",
     "history_limit": 20,
-    "wait_timeout_ms": 15000,
+    "wait_timeout_ms": 60000,
     "send_timeout_ms": 15000
   },
   "load": {
     "concurrency": 1,
-    "requests_per_worker": 500,
+    "requests_per_worker": 3,
     "worker_stagger_ms": 0,
     "request_pause_ms": 0
   },
@@ -42,7 +37,7 @@
       "enabled": false
     },
     "node_trace": {
-      "enabled": true
+      "enabled": false
     },
     "iostat": {
       "enabled": true,
@@ -60,6 +55,6 @@
     }
   },
   "artifacts": {
-    "summary_only": true
+    "summary_only": false
   }
 }

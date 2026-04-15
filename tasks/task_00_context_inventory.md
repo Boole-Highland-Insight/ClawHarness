@@ -5,4 +5,4 @@ category: local_agent_interaction
 description: /context list 上下文检查
 prompt: |
   /context list
-
+---

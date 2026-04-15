@@ -1,5 +1,5 @@
 {
-  "name": "vps-docker-multi-task-00-500-light-stag300",
+  "name": "vps-docker-multi-00-500-stag300",
   "runtime": {
     "kind": "docker",
     "image": "openclaw:bench-local-v2",
@@ -17,7 +17,7 @@
   "client": {
     "role": "operator",
     "message": "/context list",
-    "session_prefix": "vps-docker-multi-task-00-500-light-stag300",
+    "session_prefix": "vps-docker-multi-00-500-stag300",
     "session_mode": "per_worker",
     "history_limit": 20,
     "wait_timeout_ms": 35000,
