@@ -37,7 +37,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--out-root",
         default=str(pair.OUT_ROOT),
-        help="Benchmark output root directory. Defaults to repo/out.",
+        help="Benchmark output root directory. Defaults to batch_run.json output_root when available, else repo/out.",
     )
     parser.add_argument(
         "--res-root",

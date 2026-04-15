@@ -1,12 +1,13 @@
 {
   "template_scenario": "scenarios/vllm/vps_docker_single_light.json",
   "basename": "vps-docker-qwen3-32b8x2",
-  "output_root": "out/batch_run_1",
+  "output_root": "out/data/batch_run_1",
   "generated_root": ".state/generated_scenarios/batch_harness",
   "python_bin": "python3",
   "run_tag": "",
   "keep_runtime": false,
   "continue_on_error": false,
+  "skip_completed": true,
   "dry_run": false,
   "base_overrides": {
     "client.message": ""
@@ -21,6 +22,20 @@
       "key": "task-01-openclaw-comprehension",
       "task_file": "tasks/task_01_openclaw_comprehension.md",
       "message": ""
+    }
+  ],
+  "override_variants": [
+    {
+      "key": "worker",
+      "overrides": {
+        "client.session_mode": "per_worker"
+      }
+    },
+    {
+      "key": "request",
+      "overrides": {
+        "client.session_mode": "per_request"
+      }
     }
   ],
   "run_variants": [

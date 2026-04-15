@@ -6,6 +6,7 @@ import argparse
 import copy
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -28,11 +29,18 @@ class OverrideSpec:
 @dataclass(frozen=True, slots=True)
 class ClientVariant:
     key: str
+    task_bucket: str
     overrides: tuple[OverrideSpec, ...]
 
 
 @dataclass(frozen=True, slots=True)
 class RunVariant:
+    key: str
+    overrides: tuple[OverrideSpec, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class OverrideVariant:
     key: str
     overrides: tuple[OverrideSpec, ...]
 
@@ -48,9 +56,11 @@ class BatchConfig:
     run_tag: str
     keep_runtime: bool
     continue_on_error: bool
+    skip_completed: bool
     dry_run: bool
     base_overrides: tuple[OverrideSpec, ...]
     client_variants: tuple[ClientVariant, ...]
+    override_variants: tuple[OverrideVariant, ...]
     run_variants: tuple[RunVariant, ...]
 
 
@@ -162,6 +172,21 @@ def parse_override_mapping(raw: Any, *, label: str) -> tuple[OverrideSpec, ...]:
     )
 
 
+def normalize_task_bucket(raw_value: str) -> str:
+    slug = safe_slug(raw_value)
+    match = re.search(r"\btask-(\d+)\b", slug)
+    if match:
+        digits = match.group(1)
+        return f"task-{digits.zfill(max(2, len(digits)))}"
+    return slug or "default"
+
+
+def infer_task_bucket(*, client_key: str, task_file: str) -> str:
+    if task_file.strip():
+        return normalize_task_bucket(Path(task_file).stem)
+    return normalize_task_bucket(client_key)
+
+
 def parse_client_variants(raw: Any) -> tuple[ClientVariant, ...]:
     if not isinstance(raw, list) or not raw:
         raise ValueError("client_variants must be a non-empty JSON array")
@@ -185,7 +210,13 @@ def parse_client_variants(raw: Any) -> tuple[ClientVariant, ...]:
             overrides.append(OverrideSpec(path="client.task_file", value=""))
         overrides.append(OverrideSpec(path="client.message", value=message))
 
-        variants.append(ClientVariant(key=key, overrides=tuple(overrides)))
+        variants.append(
+            ClientVariant(
+                key=key,
+                task_bucket=infer_task_bucket(client_key=key, task_file=task_file),
+                overrides=tuple(overrides),
+            ),
+        )
     return tuple(variants)
 
 
@@ -203,6 +234,25 @@ def parse_run_variants(raw: Any) -> tuple[RunVariant, ...]:
         if not overrides:
             raise ValueError(f"{label}.overrides must define at least one override")
         variants.append(RunVariant(key=key, overrides=overrides))
+    return tuple(variants)
+
+
+def parse_override_variants(raw: Any) -> tuple[OverrideVariant, ...]:
+    if raw is None:
+        return (OverrideVariant(key="", overrides=()),)
+    if not isinstance(raw, list) or not raw:
+        raise ValueError("override_variants must be a non-empty JSON array")
+
+    variants: list[OverrideVariant] = []
+    for index, item in enumerate(raw, start=1):
+        label = f"override_variants[{index}]"
+        if not isinstance(item, dict):
+            raise ValueError(f"{label} must be a JSON object")
+        key = normalize_tag(parse_string(item.get("key"), label=f"{label}.key"), label=f"{label}.key")
+        overrides = parse_override_mapping(item.get("overrides"), label=f"{label}.overrides")
+        if not overrides:
+            raise ValueError(f"{label}.overrides must define at least one override")
+        variants.append(OverrideVariant(key=key, overrides=overrides))
     return tuple(variants)
 
 
@@ -236,9 +286,15 @@ def load_batch_config(path: Path) -> BatchConfig:
             label="continue_on_error",
             default=False,
         ),
+        skip_completed=parse_bool(
+            raw.get("skip_completed"),
+            label="skip_completed",
+            default=False,
+        ),
         dry_run=parse_bool(raw.get("dry_run"), label="dry_run", default=False),
         base_overrides=parse_override_mapping(raw.get("base_overrides"), label="base_overrides"),
         client_variants=parse_client_variants(raw.get("client_variants")),
+        override_variants=parse_override_variants(raw.get("override_variants")),
         run_variants=parse_run_variants(raw.get("run_variants")),
     )
 
@@ -282,8 +338,17 @@ def parse_list_index(token: str, dotted_path: str) -> int:
     return int(token)
 
 
-def build_variant_slug(*, index: int, client_key: str, run_key: str, run_tag: str) -> str:
+def build_variant_slug(
+    *,
+    index: int,
+    client_key: str,
+    run_key: str,
+    override_key: str,
+    run_tag: str,
+) -> str:
     parts = [f"{index:02d}", client_key, run_key]
+    if override_key:
+        parts.append(override_key)
     if run_tag:
         parts.append(run_tag)
     return "-".join(parts)
@@ -354,58 +419,142 @@ def build_command(
     return command
 
 
+def iter_completed_run_dirs(output_root: Path) -> list[Path]:
+    if not output_root.exists():
+        return []
+
+    run_dirs: list[Path] = []
+    for resolved_path in sorted(output_root.rglob("scenario.resolved.json"), reverse=True):
+        run_dir = resolved_path.parent
+        try:
+            relative_parts = run_dir.relative_to(output_root).parts
+        except ValueError:
+            continue
+        if "instances" in relative_parts:
+            continue
+        if not (run_dir / "summary.json").is_file():
+            continue
+        run_dirs.append(run_dir)
+    return run_dirs
+
+
+def project_like(source: Any, template: Any) -> Any:
+    if isinstance(template, dict):
+        if not isinstance(source, dict):
+            return source
+        return {
+            key: project_like(source[key], value)
+            for key, value in template.items()
+            if key in source
+        }
+    if isinstance(template, list):
+        if not isinstance(source, list):
+            return source
+        return [
+            project_like(source_item, template_item)
+            for source_item, template_item in zip(source, template)
+        ]
+    return source
+
+
+def load_completed_runs(output_root: Path) -> list[dict[str, Any]]:
+    completed_runs: list[dict[str, Any]] = []
+    for run_dir in iter_completed_run_dirs(output_root):
+        resolved_path = run_dir / "scenario.resolved.json"
+        try:
+            resolved_payload = load_json(resolved_path)
+        except (OSError, ValueError, json.JSONDecodeError):
+            continue
+        completed_runs.append(
+            {
+                "run_dir": run_dir,
+                "resolved_payload": resolved_payload,
+            },
+        )
+    return completed_runs
+
+
+def find_completed_match(
+    *,
+    spec_payload: dict[str, Any],
+    completed_runs: list[dict[str, Any]],
+) -> Path | None:
+    for completed in completed_runs:
+        resolved_payload = completed["resolved_payload"]
+        if project_like(resolved_payload, spec_payload) == spec_payload:
+            return completed["run_dir"]
+    return None
+
+
 def write_generated_scenarios(config: BatchConfig, *, batch_dir: Path) -> list[dict[str, Any]]:
     base_payload = load_json(config.template_scenario)
     run_specs: list[dict[str, Any]] = []
+    manifest_runs: list[dict[str, Any]] = []
     sequence = 1
 
     for client_variant in config.client_variants:
         for run_variant in config.run_variants:
-            file_suffix = build_variant_slug(
-                index=sequence,
-                client_key=client_variant.key,
-                run_key=run_variant.key,
-                run_tag=config.run_tag,
-            )
-            identity_suffix = run_variant.key
-            if config.run_tag:
-                identity_suffix = f"{identity_suffix}-{config.run_tag}"
-            overrides = [
-                *config.base_overrides,
-                *client_variant.overrides,
-                *run_variant.overrides,
-            ]
-            payload = build_variant_payload(
-                base_payload=base_payload,
-                overrides=overrides,
-                basename=config.basename,
-                identity_suffix=identity_suffix,
-                fallback_suffix=file_suffix,
-            )
-            generated_name = f"{file_suffix}.json"
-            generated_path = batch_dir / generated_name
-            generated_path.write_text(
-                json.dumps(payload, indent=2, ensure_ascii=True) + "\n",
-                encoding="utf-8",
-            )
-            run_specs.append(
-                {
+            for override_variant in config.override_variants:
+                file_suffix = build_variant_slug(
+                    index=sequence,
+                    client_key=client_variant.key,
+                    run_key=run_variant.key,
+                    override_key=override_variant.key,
+                    run_tag=config.run_tag,
+                )
+                identity_parts = [run_variant.key]
+                if override_variant.key:
+                    identity_parts.append(override_variant.key)
+                if config.run_tag:
+                    identity_parts.append(config.run_tag)
+                identity_suffix = "-".join(identity_parts)
+                overrides = [
+                    *config.base_overrides,
+                    *client_variant.overrides,
+                    *run_variant.overrides,
+                    *override_variant.overrides,
+                ]
+                payload = build_variant_payload(
+                    base_payload=base_payload,
+                    overrides=overrides,
+                    basename=config.basename,
+                    identity_suffix=identity_suffix,
+                    fallback_suffix=file_suffix,
+                )
+                generated_name = f"{file_suffix}.json"
+                generated_path = batch_dir / generated_name
+                generated_path.write_text(
+                    json.dumps(payload, indent=2, ensure_ascii=True) + "\n",
+                    encoding="utf-8",
+                )
+                spec = {
                     "index": sequence,
                     "client_key": client_variant.key,
+                    "task_bucket": client_variant.task_bucket,
                     "run_key": run_variant.key,
+                    "override_key": override_variant.key,
                     "generated_path": str(generated_path),
                     "scenario_name": payload["name"],
                     "session_prefix": payload["client"]["session_prefix"],
+                    "task_output_root": str(config.output_root / client_variant.task_bucket),
                     "overrides": {spec.path: spec.value for spec in overrides},
                     "command": build_command(
                         python_bin=config.python_bin,
                         scenario_path=generated_path,
-                        output_root=config.output_root,
+                        output_root=config.output_root / client_variant.task_bucket,
                         keep_runtime=config.keep_runtime,
                     ),
-                },
-            )
-            sequence += 1
+                    "payload": payload,
+                }
+                run_specs.append(spec)
+                manifest_runs.append(
+                    {
+                        key: value
+                        for key, value in spec.items()
+                        if key != "payload"
+                    },
+                )
+                sequence += 1
 
     manifest_path = batch_dir / "manifest.json"
     manifest_path.write_text(
@@ -413,7 +562,7 @@ def write_generated_scenarios(config: BatchConfig, *, batch_dir: Path) -> list[d
             {
                 "config_path": str(config.config_path),
                 "template_scenario": str(config.template_scenario),
-                "runs": run_specs,
+                "runs": manifest_runs,
             },
             indent=2,
             ensure_ascii=True,
@@ -434,20 +583,39 @@ def run_batch(
     env = os.environ.copy()
     env["PYTHONPATH"] = build_pythonpath()
     failures: list[dict[str, Any]] = []
+    skipped = 0
+    completed_runs = load_completed_runs(config.output_root) if config.skip_completed else []
 
     for spec in run_specs:
         command = list(spec["command"])
+        combo_parts = [spec["client_key"], spec["run_key"]]
+        if spec["override_key"]:
+            combo_parts.append(spec["override_key"])
         print(
             f"[{spec['index']:02d}/{len(run_specs):02d}] "
-            f"{spec['client_key']} + {spec['run_key']} -> {spec['scenario_name']}"
+            f"{' + '.join(combo_parts)} -> {spec['scenario_name']}"
         )
         print(f"  config          : {config.config_path}")
         print(f"  template        : {config.template_scenario}")
         print(f"  batch dir       : {batch_dir}")
         print(f"  generated file  : {spec['generated_path']}")
+        print(f"  task bucket     : {spec['task_bucket']}")
+        print(f"  task out root   : {spec['task_output_root']}")
         print(f"  session_prefix  : {spec['session_prefix']}")
         print(f"  overrides       : {json.dumps(spec['overrides'], ensure_ascii=True)}")
         print(f"  command         : {shlex.join(command)}")
+
+        completed_match = None
+        if config.skip_completed:
+            completed_match = find_completed_match(
+                spec_payload=spec["payload"],
+                completed_runs=completed_runs,
+            )
+            if completed_match is not None:
+                skipped += 1
+                print("  status          : skip existing completed run")
+                print(f"  completed dir   : {completed_match}")
+                continue
 
         if dry_run:
             continue
@@ -477,14 +645,20 @@ def run_batch(
                 f"  - {failure['scenario_name']}: exit code {failure['returncode']}",
                 file=sys.stderr,
             )
+        if skipped:
+            print(f"Skipped completed runs: {skipped}", file=sys.stderr)
         return 1
 
     if dry_run:
         print("")
+        if skipped:
+            print(f"Skipped {skipped} existing completed runs.")
         print("Dry run complete. No harness runs were launched.")
         return 0
 
     print("")
+    if skipped:
+        print(f"Skipped {skipped} existing completed runs.")
     print("All requested batch runs finished successfully.")
     return 0
 

@@ -5,9 +5,25 @@ import matplotlib.pyplot as plt
 
 out_root = Path("/root/client-harness/out")
 
+def iter_run_dirs() -> list[Path]:
+    run_dirs: list[Path] = []
+    for summary_path in sorted(out_root.rglob("summary.json")):
+        run_dir = summary_path.parent
+        try:
+            relative_parts = run_dir.relative_to(out_root).parts
+        except ValueError:
+            continue
+        if "instances" in relative_parts:
+            continue
+        if not (run_dir / "scenario.resolved.json").is_file():
+            continue
+        run_dirs.append(run_dir)
+    return run_dirs
+
+
 def find_latest_run_dir(scenario_name: str) -> Path:
     candidates = sorted(
-        [path for path in out_root.iterdir() if path.is_dir() and path.name.endswith(f"_{scenario_name}")],
+        [path for path in iter_run_dirs() if path.name.endswith(f"_{scenario_name}")],
         key=lambda path: path.name,
     )
     if not candidates:

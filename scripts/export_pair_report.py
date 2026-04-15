@@ -19,7 +19,7 @@ except ModuleNotFoundError:
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-OUT_ROOT = REPO_ROOT / "out"
+DEFAULT_BATCH_CONFIG = REPO_ROOT / "scripts" / "batch_run.json"
 RES_ROOT = REPO_ROOT / "res"
 SCRIPTS_ROOT = REPO_ROOT / "scripts"
 
@@ -40,6 +40,26 @@ except ModuleNotFoundError:
         raise RuntimeError("plot_latency dependencies are unavailable; rerun without --skip-figures or install matplotlib")
 
 
+def resolve_report_out_root() -> Path:
+    fallback = REPO_ROOT / "out"
+    if not DEFAULT_BATCH_CONFIG.is_file():
+        return fallback
+    try:
+        payload = json.loads(DEFAULT_BATCH_CONFIG.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return fallback
+    raw_output_root = payload.get("output_root")
+    if not isinstance(raw_output_root, str) or not raw_output_root.strip():
+        return fallback
+    configured = Path(raw_output_root.strip())
+    if configured.is_absolute():
+        return configured
+    return (REPO_ROOT / configured).resolve()
+
+
+OUT_ROOT = resolve_report_out_root()
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Export comparison charts and tables for one or more scenario pairs.",
@@ -55,7 +75,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--out-root",
         default=str(OUT_ROOT),
-        help="Benchmark output root directory. Defaults to repo/out.",
+        help="Benchmark output root directory. Defaults to batch_run.json output_root when available, else repo/out.",
     )
     parser.add_argument(
         "--res-root",
@@ -70,13 +90,44 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def iter_run_dirs(out_root: Path) -> list[Path]:
+    if not out_root.exists():
+        return []
+    run_dirs: list[Path] = []
+    for summary_path in sorted(out_root.rglob("summary.json")):
+        run_dir = summary_path.parent
+        try:
+            relative_parts = run_dir.relative_to(out_root).parts
+        except ValueError:
+            continue
+        if "instances" in relative_parts:
+            continue
+        if not (run_dir / "scenario.resolved.json").is_file():
+            continue
+        run_dirs.append(run_dir)
+    return run_dirs
+
+
 def find_latest_run_dir(out_root: Path, scenario_name: str) -> Path:
     candidates = sorted(
-        [path for path in out_root.iterdir() if path.is_dir() and path.name.endswith(f"_{scenario_name}")],
+        [path for path in iter_run_dirs(out_root) if path.name.endswith(f"_{scenario_name}")],
         key=lambda path: path.name,
     )
     if not candidates:
         raise FileNotFoundError(f"No run directory found for scenario: {scenario_name}")
+
+    task_groups: dict[str, list[Path]] = {}
+    for path in candidates:
+        relative_parts = path.relative_to(out_root).parts
+        task_group = relative_parts[0] if len(relative_parts) > 1 else ""
+        task_groups.setdefault(task_group, []).append(path)
+    if len(task_groups) > 1:
+        matches = "\n".join(f"- {path}" for path in candidates)
+        raise ValueError(
+            "Multiple task buckets contain runs for the same scenario name. "
+            "Pass --out-root to a specific task directory such as "
+            f"'{out_root}/task-00'. Matches:\n{matches}",
+        )
     return candidates[-1]
 
 
