@@ -3,7 +3,7 @@
 .state/
 out/
 out-log/
-res/
+res/*
 !res/task-01/
 !res/task-01/**
 __pycache__/

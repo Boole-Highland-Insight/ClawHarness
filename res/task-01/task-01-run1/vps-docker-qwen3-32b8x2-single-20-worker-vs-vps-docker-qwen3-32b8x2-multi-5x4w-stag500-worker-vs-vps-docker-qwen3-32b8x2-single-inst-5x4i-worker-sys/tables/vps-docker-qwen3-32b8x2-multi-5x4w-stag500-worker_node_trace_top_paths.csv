@@ -1,0 +1,6 @@
+,path,count,total_duration_ms
+0,/home/node/.openclaw/workspace,6,0.7979999999999999
+1,/home/node/.openclaw/workspace/state,6,0.767
+2,/home/node/.openclaw/workspace/node-trace-7.json,6,1.177
+3,/home/node/.openclaw/workspace/node-trace-59.json,6,1.5899999999999999
+4,/home/node/.openclaw/workspace/node-trace-42.json,6,1.934

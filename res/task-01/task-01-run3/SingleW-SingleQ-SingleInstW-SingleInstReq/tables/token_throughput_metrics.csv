@@ -1,0 +1,5 @@
+scenario,rows_with_usage,output_tokens_mean,output_tps_request_mean,output_tps_session_delta_mean
+single-w,20,80.8,15.7470213,9.4084444
+single-r,20,16.5,3.2674942000000002,3.2674942000000002
+single-inst-w,20,91.15,6.9415478,4.7167027500000005
+single-inst-r,20,16.9,1.7603986500000002,1.7603986500000002

@@ -1,0 +1,4 @@
+scenario,docker_cpu_peak,docker_cpu_peak_t_sec,docker_mem_peak,docker_mem_peak_t_sec,pidstat_cpu_peak,pidstat_cpu_peak_t_sec,pidstat_rss_peak,pidstat_rss_peak_t_sec,iostat_pct_util_peak,iostat_pct_util_peak_t_sec,iostat_w_await_peak,iostat_w_await_peak_t_sec,vmstat_interrupts_peak,vmstat_interrupts_peak_t_sec,vmstat_context_switches_peak,vmstat_context_switches_peak_t_sec,npu_utilization_peak,npu_utilization_peak_t_sec,npu_hbm_usage_peak,npu_hbm_usage_peak_t_sec,perf_context_switches_peak,perf_context_switches_peak_t_sec
+single-w,171.26,37.913834,0.05,5.05488,169.0,38.0,1005644.0,30.0,10.8,105.0,3.51,19.0,1188898.0,378.0,1925574.0,378.0,,,,,,
+multi-5x4w-stag500,152.34,0.0,0.05,2.523978,213.0,115.0,1095796.0,106.0,12.0,38.0,3.37,32.0,1132934.0,279.0,1855645.0,279.0,,,,,,
+multi-inst-5x4i,,,,,,,,,,,,,,,,,,,,,,

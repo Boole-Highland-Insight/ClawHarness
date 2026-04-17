@@ -1,0 +1,4 @@
+scenario,utilization_pct,hbm_usage_pct,aicore_usage_pct,aivector_usage_pct,aicpu_usage_pct,ctrlcpu_usage_pct
+single-w,,,,,,
+multi-5x4w-stag500,,,,,,
+multi-inst-5x4i,,,,,,

@@ -1,0 +1,4 @@
+scenario,benchmark_cpu_peak,benchmark_cpu_peak_t_sec,benchmark_rss_peak_kib,benchmark_rss_peak_t_sec,system_disk_pct_util_peak,system_disk_pct_util_peak_t_sec,system_disk_w_await_peak,system_disk_w_await_peak_t_sec,system_interrupts_peak,system_interrupts_peak_t_sec,system_context_switches_peak,system_context_switches_peak_t_sec,system_run_queue_peak,system_run_queue_peak_t_sec,npu_utilization_peak,npu_utilization_peak_t_sec,npu_aicore_peak,npu_aicore_peak_t_sec,npu_hbm_peak,npu_hbm_peak_t_sec
+multi-5x4w-stag150,125.0,1.0,1155160.0,80.0,14.8,33.0,5.94,58.0,945961.0,28.0,1693719.0,9.0,67.0,68.0,90.0,65.102882,47.625,65.102882,92.0,0.0
+multi-5x4w-stag300,125.0,1.0,1114172.0,73.0,9.2,33.0,5.2,58.0,959556.0,27.0,1488124.0,59.0,73.0,50.0,89.9375,64.909087,47.8125,45.66495,92.0,0.0
+multi-5x4w-stag500,177.0,38.0,1011980.0,33.0,11.6,7.0,5.47,19.0,862663.0,23.0,1654555.0,23.0,92.0,28.0,86.875,55.020816,47.6875,55.020816,92.0,0.0

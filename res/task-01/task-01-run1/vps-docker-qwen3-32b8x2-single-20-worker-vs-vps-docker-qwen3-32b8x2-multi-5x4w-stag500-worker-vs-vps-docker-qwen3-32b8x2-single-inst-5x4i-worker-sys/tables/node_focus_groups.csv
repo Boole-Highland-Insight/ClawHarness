@@ -1,0 +1,4 @@
+scenario,sessions_lock_total_ms,sessions_lock_count,sessions_dir_enum_total_ms,sessions_dir_enum_count,sessions_json_total_ms,sessions_json_count,sessions_tmp_total_ms,sessions_tmp_count,bootstrap_files_total_ms,bootstrap_files_count
+single-w,7.34,44.0,9.194999999999999,25.0,0.5650000000000001,11.0,2.1919999999999997,44.0,140.412,124.0
+multi-5x4w-stag500,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,31.802,42.0
+multi-inst-5x4i,,,,,,,,,,

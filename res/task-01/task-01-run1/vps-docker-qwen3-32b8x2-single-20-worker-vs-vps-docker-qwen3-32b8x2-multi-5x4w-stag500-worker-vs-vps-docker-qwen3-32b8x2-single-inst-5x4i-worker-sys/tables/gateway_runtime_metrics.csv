@@ -1,0 +1,4 @@
+scenario,bootstrap_load_mean_ms,skills_mean_ms,context_bundle_mean_ms,execution_admission_wait_mean_ms,reply_dispatch_queue_wait_mean_ms,reply_dispatch_queue_hold_mean_ms,reply_dispatch_pending_mean
+single-w,,,,,,,
+multi-5x4w-stag500,,,,,,,
+multi-inst-5x4i,,,,,,,

@@ -1,0 +1,10 @@
+,single-w,multi-5x4w-stag500,multi-inst-5x4i
+openat,,,
+statx,,,
+newfstatat,,,
+pread64,,,
+clone,,,
+sched_yield,,,
+futex,,,
+read,,,
+write,,,

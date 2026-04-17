@@ -1,0 +1,5 @@
+scenario,utilization_pct,hbm_usage_pct,aicore_usage_pct
+single-w,52.99038461538461,92.0,19.125
+multi-5x4w-stag500,62.125,92.0,32.36607142857143
+multi-inst-5x4i,51.05555555555556,92.0,25.786458333333332
+multi-inst-5x2ix2w-500,62.2578125,92.0,32.375

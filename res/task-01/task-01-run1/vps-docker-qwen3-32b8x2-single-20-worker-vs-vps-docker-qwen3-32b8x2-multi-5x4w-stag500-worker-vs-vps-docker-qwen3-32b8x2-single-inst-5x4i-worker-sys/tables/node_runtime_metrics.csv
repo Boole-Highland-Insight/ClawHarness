@@ -1,0 +1,4 @@
+scenario,fs_async_mean_ms,fs_callback_mean_ms,promise_callback_mean_ms,event_loop_immediate_mean_ms,event_loop_timers_mean_ms,fs_async_count,fs_callback_count,promise_callback_count
+single-w,929.6637191689823,6.974590163934426,0.07457930632320876,0.026330815933659116,0.43487288135593216,188925.0,61.0,39442.0
+multi-5x4w-stag500,131.61830938593505,0.0,0.02220165534154192,0.11727591240875913,0.3996756756756757,64586.0,0.0,19573.0
+multi-inst-5x4i,,,,,,,,
