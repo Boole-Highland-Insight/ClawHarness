@@ -4,8 +4,7 @@
 out/
 out-log/
 res/
-!res/task-01-run1/
-!res/task-01-run2/
-!res/task-01-run3/
+!res/task-01/
+!res/task-01/**
 __pycache__/
 .pytest_cache/
