@@ -85,12 +85,12 @@
       }
     },
     {
-      "key": "multi-inst-5x2ix2w",
+      "key": "multi-inst-5x2ix2w-stag500",
       "overrides": {
         "runtime.instance_num": 2,
         "load.concurrency": 2,
         "load.requests_per_worker": 5,
-        "load.worker_stagger_ms": 0
+        "load.worker_stagger_ms": 500
       }
     }
   ]
