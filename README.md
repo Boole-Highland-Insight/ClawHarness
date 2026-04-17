@@ -282,3 +282,44 @@ openclaw-harness run --scenario scenarios/<your_scenario>.json
 - `client-harness/src/openclaw_harness/runner.py`：真正执行 `chat.send -> agent.wait -> chat.history`，并写出运行产物。
 
 如果你想快速检查某个场景到底会发什么，可以先看 `scenario.resolved.json` 里的 `client.resolved_prompt`，它就是最终发送给 gateway 的内容。
+
+## CoClaw 子项目（控制面原型）
+
+仓库根目录新增 `CoClaw/`，包含：
+
+- `CoClaw/backend`：FastAPI 轻量服务，提供 `/healthz` 和容器/实例示例数据接口。
+- `CoClaw/frontend`：Dashboard 原型页面，展示容器卡片、实例列表与状态。
+
+架构约束：`CoClaw/frontend` 不直接调用脚本或命令；统一通过服务层（frontend 的 `harnessService`、backend 的 `HarnessService`）封装与 `src/openclaw_harness` 的集成，保证解耦。
+
+### CoClaw 启动说明
+
+后端：
+
+```bash
+cd CoClaw/backend
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 18080
+```
+
+前端：
+
+```bash
+cd CoClaw/frontend
+npm install
+npm run dev
+```
+
+### CoClaw 开发脚本
+
+```bash
+# backend
+uvicorn app.main:app --reload --port 18080
+
+# frontend
+npm run dev
+npm run build
+npm run preview
+```
