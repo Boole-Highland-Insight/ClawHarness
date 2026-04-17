@@ -89,7 +89,8 @@ class NodeTraceConfig:
 class NpuSmiConfig:
     enabled: bool = False
     interval_sec: int = 1
-    card_ids: list[int] = field(default_factory=lambda: list(range(8)))
+    auto_discover: bool = True
+    card_ids: list[int] = field(default_factory=list)
 
 
 @dataclass(slots=True)

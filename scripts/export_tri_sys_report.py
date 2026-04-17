@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import shutil
 import sys
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +13,16 @@ import export_pair_report as pair
 
 LINE_STYLES = ["-", "--", "-.", ":"]
 MARKERS = ["o", "s", "^", "D", "x", "P", "*"]
+
+
+def dataframe_has_values(df: pd.DataFrame) -> bool:
+    return not df.empty and bool(df.notna().any().any())
+
+
+def non_empty_columns(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+    return df.loc[:, df.notna().any()]
 
 
 def parse_args() -> argparse.Namespace:
@@ -36,9 +45,15 @@ def parse_args() -> argparse.Namespace:
         help="Optional display labels for the three reports. Must be repeated once per --tri when used.",
     )
     parser.add_argument(
+        "--report-dir-name",
+        action="append",
+        metavar="DIR_NAME",
+        help="Optional output directory name under --res-root. Must be repeated once per --tri when used.",
+    )
+    parser.add_argument(
         "--out-root",
         default=str(pair.OUT_ROOT),
-        help="Benchmark output root directory. Defaults to repo/out.",
+        help="Benchmark output root directory. Defaults to batch_run.json output_root when available, else repo/out.",
     )
     parser.add_argument(
         "--res-root",
@@ -53,52 +68,6 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def build_series(summary_records: list[dict[str, Any]], path: list[str]) -> list[dict[str, Any]]:
-    return [
-        {
-            "label": str(record["display_name"]),
-            "points": pair.time_series_points(record["summary"], path),
-        }
-        for record in summary_records
-    ]
-
-
-def with_scenario_label(label: str, row: dict[str, Any]) -> dict[str, Any]:
-    labeled_row = dict(row)
-    labeled_row["scenario"] = label
-    return labeled_row
-
-
-def build_machine_profile_row(summary: dict[str, Any]) -> dict[str, Any]:
-    vmstat = pair.nested_get(summary, ["collector_analysis", "vmstat"], {})
-    iostat = pair.nested_get(summary, ["collector_analysis", "iostat"], {})
-    return {
-        "cpu_user_pct_mean": pair.metric_summary_mean(vmstat, ["metric_summaries", "us"]),
-        "cpu_system_pct_mean": pair.metric_summary_mean(vmstat, ["metric_summaries", "sy"]),
-        "cpu_iowait_pct_mean": pair.metric_summary_mean(vmstat, ["metric_summaries", "wa"]),
-        "cpu_idle_pct_mean": pair.metric_summary_mean(vmstat, ["metric_summaries", "id"]),
-        "mem_free_kib_mean": pair.metric_summary_mean(vmstat, ["metric_summaries", "free"]),
-        "mem_buff_kib_mean": pair.metric_summary_mean(vmstat, ["metric_summaries", "buff"]),
-        "mem_cache_kib_mean": pair.metric_summary_mean(vmstat, ["metric_summaries", "cache"]),
-        "disk_pct_util_mean": pair.metric_summary_mean(iostat, ["key_metric_summaries", "pct_util"]),
-        "disk_w_await_ms_mean": pair.metric_summary_mean(iostat, ["key_metric_summaries", "w_await"]),
-        "disk_aqu_sz_mean": pair.metric_summary_mean(iostat, ["key_metric_summaries", "aqu_sz"]),
-        "interrupts_per_s_mean": pair.metric_summary_mean(
-            vmstat,
-            ["key_metric_summaries", "interrupts_per_s"],
-        ),
-        "context_switches_per_s_mean": pair.metric_summary_mean(
-            vmstat,
-            ["key_metric_summaries", "context_switches_per_s"],
-        ),
-        "run_queue_mean": pair.metric_summary_mean(vmstat, ["key_metric_summaries", "run_queue"]),
-        "blocked_processes_mean": pair.metric_summary_mean(
-            vmstat,
-            ["key_metric_summaries", "blocked_processes"],
-        ),
-    }
-
-
 def normalize_display_names(
     scenario_names: list[str],
     labels: list[str] | None,
@@ -111,8 +80,10 @@ def normalize_display_names(
     return display_names
 
 
-def render_generated_timestamp() -> str:
-    return datetime.now().astimezone().isoformat(sep=" ", timespec="seconds")
+def with_scenario_label(label: str, row: dict[str, Any]) -> dict[str, Any]:
+    labeled_row = dict(row)
+    labeled_row["scenario"] = label
+    return labeled_row
 
 
 def plot_time_series_panels_multi(
@@ -205,7 +176,7 @@ def plot_latency_timeline_multi(
                 "x_values": x_values,
                 "linestyle": LINE_STYLES[index % len(LINE_STYLES)],
                 "marker": MARKERS[index % len(MARKERS)],
-            }
+            },
         )
 
     fig, axes = pair.plt.subplots(
@@ -241,12 +212,384 @@ def plot_latency_timeline_multi(
     pair.plt.close(fig)
 
 
+def get_instance_analyses(summary: dict[str, Any]) -> list[dict[str, Any]]:
+    collector = pair.nested_get(summary, ["collector_analysis"], {})
+    if not isinstance(collector, dict):
+        return []
+
+    instance_entries = collector.get("instances")
+    if isinstance(instance_entries, list):
+        analyses = [
+            entry.get("analysis")
+            for entry in instance_entries
+            if isinstance(entry, dict) and isinstance(entry.get("analysis"), dict)
+        ]
+        if analyses:
+            return analyses
+
+    return [collector]
+
+
+def combine_numeric(values: list[Any], *, mode: str) -> float | None:
+    numbers = [float(value) for value in values if isinstance(value, (int, float))]
+    if not numbers:
+        return None
+    if mode == "sum":
+        return sum(numbers)
+    if mode == "mean":
+        return sum(numbers) / len(numbers)
+    raise ValueError(f"unsupported reduction mode: {mode}")
+
+
+def combine_metric_means(
+    analyses: list[dict[str, Any]],
+    path: list[str],
+    *,
+    mode: str,
+) -> float | None:
+    values = [pair.metric_summary_mean(analysis, path) for analysis in analyses]
+    return combine_numeric(values, mode=mode)
+
+
+def pick_busiest_device(analyses: list[dict[str, Any]]) -> str | None:
+    for analysis in analyses:
+        iostat = pair.nested_get(analysis, ["iostat"], {})
+        if not isinstance(iostat, dict):
+            continue
+        candidate = (
+            pair.nested_get(analysis, ["iostat", "key_metrics", "busiest_device"])
+            or iostat.get("busiest_device_by_util_mean")
+        )
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate
+    return None
+
+
+def analysis_time_series_points(
+    analysis: dict[str, Any],
+    path: list[str],
+) -> list[tuple[float, float]]:
+    entry = pair.nested_get(analysis, path, None)
+    if not isinstance(entry, dict):
+        return []
+    points = entry.get("points")
+    if not isinstance(points, list):
+        return []
+
+    result: list[tuple[float, float]] = []
+    for point in points:
+        if not isinstance(point, dict):
+            continue
+        t_sec = point.get("t_sec")
+        value = point.get("value")
+        if isinstance(t_sec, (int, float)) and isinstance(value, (int, float)):
+            result.append((float(t_sec), float(value)))
+    return result
+
+
+def aggregate_time_series_points(
+    analyses: list[dict[str, Any]],
+    path: list[str],
+    *,
+    mode: str,
+) -> list[tuple[float, float]]:
+    buckets: dict[float, float] = {}
+    counts: dict[float, int] = {}
+
+    for analysis in analyses:
+        for t_sec, value in analysis_time_series_points(analysis, path):
+            key = round(t_sec, 6)
+            buckets[key] = buckets.get(key, 0.0) + value
+            counts[key] = counts.get(key, 0) + 1
+
+    if not buckets:
+        return []
+
+    points: list[tuple[float, float]] = []
+    for key in sorted(buckets):
+        total_value = buckets[key]
+        if mode == "sum":
+            points.append((key, total_value))
+        elif mode == "mean":
+            points.append((key, total_value / counts[key]))
+        else:
+            raise ValueError(f"unsupported reduction mode: {mode}")
+    return points
+
+
+def build_aggregated_series(
+    summary_records: list[dict[str, Any]],
+    path: list[str],
+    *,
+    mode: str,
+) -> list[dict[str, Any]]:
+    series: list[dict[str, Any]] = []
+    for record in summary_records:
+        series.append(
+            {
+                "label": str(record["display_name"]),
+                "points": aggregate_time_series_points(
+                    get_instance_analyses(record["summary"]),
+                    path,
+                    mode=mode,
+                ),
+            },
+        )
+    return series
+
+
+def peak_from_points(points: list[tuple[float, float]]) -> tuple[float | None, float | None]:
+    if not points:
+        return (None, None)
+    t_sec, value = max(points, key=lambda item: item[1])
+    return (value, t_sec)
+
+
+def build_system_profile_row(summary: dict[str, Any], run_dir: Path) -> dict[str, Any]:
+    analyses = get_instance_analyses(summary)
+    latency = summary["latency_ms"]
+    token_metrics = summary.get("token_metrics", {}) if isinstance(summary.get("token_metrics"), dict) else {}
+    return {
+        "scenario": summary["scenario"],
+        "run_dir": str(run_dir),
+        "instance_num": summary.get("instance_num"),
+        "requests_total": summary["requests_total"],
+        "requests_ok": summary["requests_ok"],
+        "requests_failed": summary["requests_failed"],
+        "connect_mean_ms": latency["connect"]["mean"],
+        "send_mean_ms": latency["send"]["mean"],
+        "send_p95_ms": latency["send"]["p95"],
+        "send_p99_ms": latency["send"]["p99"],
+        "wait_mean_ms": latency["wait"]["mean"],
+        "wait_p50_ms": latency["wait"]["p50"],
+        "wait_p95_ms": latency["wait"]["p95"],
+        "wait_p99_ms": latency["wait"]["p99"],
+        "history_mean_ms": latency["history"]["mean"],
+        "history_p95_ms": latency["history"]["p95"],
+        "history_p99_ms": latency["history"]["p99"],
+        "total_mean_ms": latency["total"]["mean"],
+        "total_p50_ms": latency["total"]["p50"],
+        "total_p95_ms": latency["total"]["p95"],
+        "total_p99_ms": latency["total"]["p99"],
+        "benchmark_cpu_percent_mean": combine_metric_means(
+            analyses,
+            ["pidstat", "sections", "cpu", "metric_summaries", "pct_cpu"],
+            mode="sum",
+        ),
+        "benchmark_cpu_usr_percent_mean": combine_metric_means(
+            analyses,
+            ["pidstat", "sections", "cpu", "metric_summaries", "pct_usr"],
+            mode="sum",
+        ),
+        "benchmark_cpu_system_percent_mean": combine_metric_means(
+            analyses,
+            ["pidstat", "sections", "cpu", "metric_summaries", "pct_system"],
+            mode="sum",
+        ),
+        "benchmark_cpu_wait_percent_mean": combine_metric_means(
+            analyses,
+            ["pidstat", "sections", "cpu", "metric_summaries", "pct_wait"],
+            mode="sum",
+        ),
+        "benchmark_rss_kib_mean": combine_metric_means(
+            analyses,
+            ["pidstat", "sections", "memory", "metric_summaries", "rss_kib"],
+            mode="sum",
+        ),
+        "benchmark_kb_wr_per_s_mean": combine_metric_means(
+            analyses,
+            ["pidstat", "sections", "io", "metric_summaries", "kb_wr_per_s"],
+            mode="sum",
+        ),
+        "benchmark_iodelay_mean": combine_metric_means(
+            analyses,
+            ["pidstat", "sections", "io", "metric_summaries", "iodelay"],
+            mode="sum",
+        ),
+        "benchmark_cswch_per_s_mean": combine_metric_means(
+            analyses,
+            ["pidstat", "sections", "context_switch", "metric_summaries", "cswch_per_s"],
+            mode="sum",
+        ),
+        "benchmark_nvcswch_per_s_mean": combine_metric_means(
+            analyses,
+            ["pidstat", "sections", "context_switch", "metric_summaries", "nvcswch_per_s"],
+            mode="sum",
+        ),
+        "system_busiest_device": pick_busiest_device(analyses),
+        "system_disk_pct_util_mean": combine_metric_means(
+            analyses,
+            ["iostat", "key_metric_summaries", "pct_util"],
+            mode="mean",
+        ),
+        "system_disk_r_await_mean": combine_metric_means(
+            analyses,
+            ["iostat", "key_metric_summaries", "r_await"],
+            mode="mean",
+        ),
+        "system_disk_w_await_mean": combine_metric_means(
+            analyses,
+            ["iostat", "key_metric_summaries", "w_await"],
+            mode="mean",
+        ),
+        "system_disk_aqu_sz_mean": combine_metric_means(
+            analyses,
+            ["iostat", "key_metric_summaries", "aqu_sz"],
+            mode="mean",
+        ),
+        "system_disk_wkb_s_mean": combine_metric_means(
+            analyses,
+            ["iostat", "key_metric_summaries", "wkb_s"],
+            mode="mean",
+        ),
+        "system_interrupts_per_s_mean": combine_metric_means(
+            analyses,
+            ["vmstat", "key_metric_summaries", "interrupts_per_s"],
+            mode="mean",
+        ),
+        "system_context_switches_per_s_mean": combine_metric_means(
+            analyses,
+            ["vmstat", "key_metric_summaries", "context_switches_per_s"],
+            mode="mean",
+        ),
+        "system_run_queue_mean": combine_metric_means(
+            analyses,
+            ["vmstat", "key_metric_summaries", "run_queue"],
+            mode="mean",
+        ),
+        "system_blocked_processes_mean": combine_metric_means(
+            analyses,
+            ["vmstat", "key_metric_summaries", "blocked_processes"],
+            mode="mean",
+        ),
+        "npu_utilization_mean": combine_metric_means(
+            analyses,
+            ["npu_smi", "key_metric_summaries", "npu_utilization_pct"],
+            mode="mean",
+        ),
+        "npu_hbm_usage_mean": combine_metric_means(
+            analyses,
+            ["npu_smi", "key_metric_summaries", "hbm_usage_rate_pct"],
+            mode="mean",
+        ),
+        "npu_aicore_usage_mean": combine_metric_means(
+            analyses,
+            ["npu_smi", "key_metric_summaries", "aicore_usage_rate_pct"],
+            mode="mean",
+        ),
+        "token_rows_with_usage": token_metrics.get("rows_with_usage"),
+        "output_tokens_mean": pair.metric_mean({"summary": token_metrics.get("output_tokens", {})}, ["summary"]),
+        "output_tps_request_mean": pair.metric_mean({"summary": token_metrics.get("output_tps_request", {})}, ["summary"]),
+        "output_tps_session_delta_mean": pair.metric_mean(
+            {"summary": token_metrics.get("output_tps_session_delta", {})},
+            ["summary"],
+        ),
+    }
+
+
+def build_system_peak_row(summary: dict[str, Any]) -> dict[str, Any]:
+    analyses = get_instance_analyses(summary)
+    benchmark_cpu_peak, benchmark_cpu_peak_t_sec = peak_from_points(
+        aggregate_time_series_points(
+            analyses,
+            ["pidstat", "sections", "cpu", "time_series", "pct_cpu"],
+            mode="sum",
+        ),
+    )
+    benchmark_rss_peak, benchmark_rss_peak_t_sec = peak_from_points(
+        aggregate_time_series_points(
+            analyses,
+            ["pidstat", "sections", "memory", "time_series", "rss_kib"],
+            mode="sum",
+        ),
+    )
+    system_disk_pct_util_peak, system_disk_pct_util_peak_t_sec = peak_from_points(
+        aggregate_time_series_points(
+            analyses,
+            ["iostat", "key_time_series", "pct_util"],
+            mode="mean",
+        ),
+    )
+    system_disk_w_await_peak, system_disk_w_await_peak_t_sec = peak_from_points(
+        aggregate_time_series_points(
+            analyses,
+            ["iostat", "key_time_series", "w_await"],
+            mode="mean",
+        ),
+    )
+    system_interrupts_peak, system_interrupts_peak_t_sec = peak_from_points(
+        aggregate_time_series_points(
+            analyses,
+            ["vmstat", "key_time_series", "interrupts_per_s"],
+            mode="mean",
+        ),
+    )
+    system_context_switches_peak, system_context_switches_peak_t_sec = peak_from_points(
+        aggregate_time_series_points(
+            analyses,
+            ["vmstat", "key_time_series", "context_switches_per_s"],
+            mode="mean",
+        ),
+    )
+    system_run_queue_peak, system_run_queue_peak_t_sec = peak_from_points(
+        aggregate_time_series_points(
+            analyses,
+            ["vmstat", "key_time_series", "run_queue"],
+            mode="mean",
+        ),
+    )
+    npu_utilization_peak, npu_utilization_peak_t_sec = peak_from_points(
+        aggregate_time_series_points(
+            analyses,
+            ["npu_smi", "key_time_series", "npu_utilization_pct"],
+            mode="mean",
+        ),
+    )
+    npu_aicore_peak, npu_aicore_peak_t_sec = peak_from_points(
+        aggregate_time_series_points(
+            analyses,
+            ["npu_smi", "key_time_series", "aicore_usage_rate_pct"],
+            mode="mean",
+        ),
+    )
+    npu_hbm_peak, npu_hbm_peak_t_sec = peak_from_points(
+        aggregate_time_series_points(
+            analyses,
+            ["npu_smi", "key_time_series", "hbm_usage_rate_pct"],
+            mode="mean",
+        ),
+    )
+    return {
+        "benchmark_cpu_peak": benchmark_cpu_peak,
+        "benchmark_cpu_peak_t_sec": benchmark_cpu_peak_t_sec,
+        "benchmark_rss_peak_kib": benchmark_rss_peak,
+        "benchmark_rss_peak_t_sec": benchmark_rss_peak_t_sec,
+        "system_disk_pct_util_peak": system_disk_pct_util_peak,
+        "system_disk_pct_util_peak_t_sec": system_disk_pct_util_peak_t_sec,
+        "system_disk_w_await_peak": system_disk_w_await_peak,
+        "system_disk_w_await_peak_t_sec": system_disk_w_await_peak_t_sec,
+        "system_interrupts_peak": system_interrupts_peak,
+        "system_interrupts_peak_t_sec": system_interrupts_peak_t_sec,
+        "system_context_switches_peak": system_context_switches_peak,
+        "system_context_switches_peak_t_sec": system_context_switches_peak_t_sec,
+        "system_run_queue_peak": system_run_queue_peak,
+        "system_run_queue_peak_t_sec": system_run_queue_peak_t_sec,
+        "npu_utilization_peak": npu_utilization_peak,
+        "npu_utilization_peak_t_sec": npu_utilization_peak_t_sec,
+        "npu_aicore_peak": npu_aicore_peak,
+        "npu_aicore_peak_t_sec": npu_aicore_peak_t_sec,
+        "npu_hbm_peak": npu_hbm_peak,
+        "npu_hbm_peak_t_sec": npu_hbm_peak_t_sec,
+    }
+
+
 def build_triplet_outputs(
     *,
     out_root: Path,
     res_root: Path,
     scenario_names: list[str],
     display_names: list[str] | None,
+    report_dir_name: str | None,
     render_figures: bool,
 ) -> dict[str, Any]:
     normalized_display_names = normalize_display_names(scenario_names, display_names)
@@ -260,11 +603,12 @@ def build_triplet_outputs(
                 "display_name": display_name,
                 "run_dir": run_dir,
                 "summary": summary,
-            }
+            },
         )
 
-    tri_slug = pair.safe_slug("__vs__".join(scenario_names) + "__sys")
-    tri_dir = res_root / tri_slug
+    tri_slug = pair.safe_slug("__vs__".join(scenario_names))
+    target_dir_name = report_dir_name.strip() if report_dir_name else ""
+    tri_dir = res_root / target_dir_name if target_dir_name else res_root / f"{tri_slug}-sys"
     if tri_dir.exists():
         if render_figures:
             shutil.rmtree(tri_dir)
@@ -277,12 +621,13 @@ def build_triplet_outputs(
         [
             with_scenario_label(
                 str(record["display_name"]),
-                pair.build_resource_profile_row(record["summary"], record["run_dir"]),
+                build_system_profile_row(record["summary"], record["run_dir"]),
             )
             for record in summary_records
-        ]
+        ],
     ).set_index("scenario")
-    pair.save_dataframe(profile_df, tri_dir / "tables" / "resource_profile.csv")
+    pair.save_dataframe(profile_df, tri_dir / "tables" / "system_resource_profile.csv")
+
     run_timing_df = pd.DataFrame(
         [
             pair.build_run_timing_row(
@@ -291,7 +636,7 @@ def build_triplet_outputs(
                 scenario_label=str(record["display_name"]),
             )
             for record in summary_records
-        ]
+        ],
     ).set_index("scenario")
     pair.save_dataframe(run_timing_df, tri_dir / "tables" / "run_timing.csv")
 
@@ -299,92 +644,12 @@ def build_triplet_outputs(
         [
             with_scenario_label(
                 str(record["display_name"]),
-                pair.build_peak_profile_row(record["summary"]),
+                build_system_peak_row(record["summary"]),
             )
             for record in summary_records
-        ]
+        ],
     ).set_index("scenario")
-    pair.save_dataframe(peak_df, tri_dir / "tables" / "timeline_peaks.csv")
-
-    strace_key_syscalls_df = pd.DataFrame(
-        [
-            with_scenario_label(
-                str(record["display_name"]),
-                pair.build_strace_key_syscalls_row(
-                    record["summary"],
-                    run_dir=record["run_dir"],
-                ),
-            )
-            for record in summary_records
-        ]
-    ).set_index("scenario")
-    strace_key_syscalls_df = pair.enrich_strace_normalized_metrics(
-        strace_key_syscalls_df,
-        {
-            str(record["display_name"]): record["summary"]
-            for record in summary_records
-        },
-    )
-    pair.save_dataframe(strace_key_syscalls_df, tri_dir / "tables" / "strace_key_syscalls.csv")
-
-    strace_mean_duration_df = pair.build_strace_mean_duration_df(strace_key_syscalls_df)
-    pair.save_dataframe(strace_mean_duration_df, tri_dir / "tables" / "strace_mean_duration_ms.csv")
-
-    runtime_category_df = pd.DataFrame(
-        [
-            with_scenario_label(
-                str(record["display_name"]),
-                pair.build_runtime_category_row(
-                    record["summary"],
-                    run_dir=record["run_dir"],
-                ),
-            )
-            for record in summary_records
-        ]
-    ).set_index("scenario")
-    pair.save_dataframe(runtime_category_df, tri_dir / "tables" / "runtime_category_samples.csv")
-
-    runtime_category_pct_df = pair.build_runtime_category_pct_df(runtime_category_df)
-    pair.save_dataframe(runtime_category_pct_df, tri_dir / "tables" / "runtime_category_pct.csv")
-
-    gateway_runtime_df = pair.build_gateway_runtime_table(profile_df)
-    pair.save_dataframe(gateway_runtime_df, tri_dir / "tables" / "gateway_runtime_metrics.csv")
-
-    node_focus_groups_df = pair.build_node_focus_groups_table(profile_df)
-    pair.save_dataframe(node_focus_groups_df, tri_dir / "tables" / "node_focus_groups.csv")
-
-    node_runtime_df = pair.build_node_runtime_table(profile_df)
-    if pair.has_dataframe_data(node_runtime_df):
-        pair.save_dataframe(node_runtime_df, tri_dir / "tables" / "node_runtime_metrics.csv")
-
-    node_runtime_mean_duration_df = pair.build_node_runtime_mean_duration_df(profile_df)
-    if pair.has_dataframe_data(node_runtime_mean_duration_df):
-        pair.save_dataframe(
-            node_runtime_mean_duration_df,
-            tri_dir / "tables" / "node_runtime_mean_duration_ms.csv",
-        )
-
-    node_focus_groups_duration_df = node_focus_groups_df[
-        [
-            "sessions_lock_total_ms",
-            "sessions_dir_enum_total_ms",
-            "sessions_json_total_ms",
-            "sessions_tmp_total_ms",
-            "bootstrap_files_total_ms",
-        ]
-    ].rename(
-        columns={
-            "sessions_lock_total_ms": "sessions_lock",
-            "sessions_dir_enum_total_ms": "sessions_dir_enum",
-            "sessions_json_total_ms": "sessions_json",
-            "sessions_tmp_total_ms": "sessions_tmp",
-            "bootstrap_files_total_ms": "bootstrap_files",
-        }
-    ).T
-    pair.save_dataframe(
-        node_focus_groups_duration_df,
-        tri_dir / "tables" / "node_focus_group_duration_ms.csv",
-    )
+    pair.save_dataframe(peak_df, tri_dir / "tables" / "system_timeline_peaks.csv")
 
     latency_overview_df = profile_df[
         ["total_mean_ms", "total_p50_ms", "total_p95_ms", "total_p99_ms"]
@@ -394,7 +659,7 @@ def build_triplet_outputs(
             "total_p50_ms": "total_p50",
             "total_p95_ms": "total_p95",
             "total_p99_ms": "total_p99",
-        }
+        },
     )
     phase_df = profile_df[
         ["connect_mean_ms", "send_mean_ms", "wait_mean_ms", "history_mean_ms", "total_mean_ms"]
@@ -405,7 +670,7 @@ def build_triplet_outputs(
             "wait_mean_ms": "wait",
             "history_mean_ms": "history",
             "total_mean_ms": "total",
-        }
+        },
     )
     tail_df = profile_df[
         [
@@ -430,182 +695,112 @@ def build_triplet_outputs(
             "history_p99_ms": "history_p99",
             "total_p95_ms": "total_p95",
             "total_p99_ms": "total_p99",
-        }
+        },
     )
-    machine_df = pd.DataFrame(
+    system_cpu_df = profile_df[
         [
-            with_scenario_label(
-                str(record["display_name"]),
-                build_machine_profile_row(record["summary"]),
-            )
-            for record in summary_records
-        ]
-    ).set_index("scenario")
-    machine_cpu_mem_df = machine_df[
-        [
-            "cpu_user_pct_mean",
-            "cpu_system_pct_mean",
-            "cpu_iowait_pct_mean",
-            "cpu_idle_pct_mean",
-            "mem_free_kib_mean",
-            "mem_cache_kib_mean",
+            "benchmark_cpu_percent_mean",
+            "benchmark_cpu_usr_percent_mean",
+            "benchmark_cpu_system_percent_mean",
+            "benchmark_cpu_wait_percent_mean",
         ]
     ].rename(
         columns={
-            "cpu_user_pct_mean": "cpu_user_pct",
-            "cpu_system_pct_mean": "cpu_system_pct",
-            "cpu_iowait_pct_mean": "cpu_iowait_pct",
-            "cpu_idle_pct_mean": "cpu_idle_pct",
-            "mem_free_kib_mean": "mem_free_kib",
-            "mem_cache_kib_mean": "mem_cache_kib",
-        }
+            "benchmark_cpu_percent_mean": "pct_cpu_total",
+            "benchmark_cpu_usr_percent_mean": "pct_cpu_usr",
+            "benchmark_cpu_system_percent_mean": "pct_cpu_system",
+            "benchmark_cpu_wait_percent_mean": "pct_cpu_wait",
+        },
     )
-    process_df = profile_df[
+    system_memory_df = profile_df[["benchmark_rss_kib_mean"]].rename(
+        columns={"benchmark_rss_kib_mean": "rss_kib_total"},
+    )
+    system_disk_df = profile_df[
         [
-            "pidstat_cpu_percent_mean",
-            "pidstat_rss_kib_mean",
-            "pidstat_kb_wr_per_s_mean",
-            "pidstat_iodelay_mean",
-            "pidstat_cswch_per_s_mean",
-            "pidstat_nvcswch_per_s_mean",
+            "system_busiest_device",
+            "system_disk_pct_util_mean",
+            "system_disk_r_await_mean",
+            "system_disk_w_await_mean",
+            "system_disk_aqu_sz_mean",
+            "system_disk_wkb_s_mean",
+            "benchmark_kb_wr_per_s_mean",
         ]
     ].rename(
         columns={
-            "pidstat_cpu_percent_mean": "cpu_percent",
-            "pidstat_rss_kib_mean": "rss_kib",
-            "pidstat_kb_wr_per_s_mean": "kb_wr_per_s",
-            "pidstat_iodelay_mean": "iodelay",
-            "pidstat_cswch_per_s_mean": "cswch_per_s",
-            "pidstat_nvcswch_per_s_mean": "nvcswch_per_s",
-        }
+            "system_busiest_device": "busiest_device",
+            "system_disk_pct_util_mean": "pct_util",
+            "system_disk_r_await_mean": "r_await",
+            "system_disk_w_await_mean": "w_await",
+            "system_disk_aqu_sz_mean": "aqu_sz",
+            "system_disk_wkb_s_mean": "system_wkb_s",
+            "benchmark_kb_wr_per_s_mean": "benchmark_kb_wr_per_s",
+        },
+    )
+    system_activity_df = profile_df[
+        [
+            "system_interrupts_per_s_mean",
+            "system_context_switches_per_s_mean",
+            "system_run_queue_mean",
+            "system_blocked_processes_mean",
+            "benchmark_cswch_per_s_mean",
+            "benchmark_nvcswch_per_s_mean",
+            "benchmark_iodelay_mean",
+        ]
+    ].rename(
+        columns={
+            "system_interrupts_per_s_mean": "interrupts_per_s",
+            "system_context_switches_per_s_mean": "system_context_switches_per_s",
+            "system_run_queue_mean": "run_queue",
+            "system_blocked_processes_mean": "blocked_processes",
+            "benchmark_cswch_per_s_mean": "benchmark_cswch_per_s",
+            "benchmark_nvcswch_per_s_mean": "benchmark_nvcswch_per_s",
+            "benchmark_iodelay_mean": "benchmark_iodelay",
+        },
     )
     npu_df = profile_df[
         [
             "npu_utilization_mean",
             "npu_hbm_usage_mean",
             "npu_aicore_usage_mean",
-            "npu_aivector_usage_mean",
-            "npu_aicpu_usage_mean",
-            "npu_ctrlcpu_usage_mean",
         ]
     ].rename(
         columns={
             "npu_utilization_mean": "utilization_pct",
             "npu_hbm_usage_mean": "hbm_usage_pct",
             "npu_aicore_usage_mean": "aicore_usage_pct",
-            "npu_aivector_usage_mean": "aivector_usage_pct",
-            "npu_aicpu_usage_mean": "aicpu_usage_pct",
-            "npu_ctrlcpu_usage_mean": "ctrlcpu_usage_pct",
-        }
+        },
     )
-    disk_df = profile_df[
+    token_throughput_df = profile_df[
         [
-            "iostat_busiest_device",
-            "iostat_pct_util_mean",
-            "iostat_r_await_mean",
-            "iostat_w_await_mean",
-            "iostat_f_await_mean",
-            "iostat_aqu_sz_mean",
-            "iostat_wkb_s_mean",
+            "token_rows_with_usage",
+            "output_tokens_mean",
+            "output_tps_request_mean",
+            "output_tps_session_delta_mean",
         ]
     ].rename(
         columns={
-            "iostat_busiest_device": "busiest_device",
-            "iostat_pct_util_mean": "pct_util",
-            "iostat_r_await_mean": "r_await",
-            "iostat_w_await_mean": "w_await",
-            "iostat_f_await_mean": "f_await",
-            "iostat_aqu_sz_mean": "aqu_sz",
-            "iostat_wkb_s_mean": "wkb_s",
-        }
+            "token_rows_with_usage": "rows_with_usage",
+            "output_tokens_mean": "output_tokens_mean",
+            "output_tps_request_mean": "output_tps_request_mean",
+            "output_tps_session_delta_mean": "output_tps_session_delta_mean",
+        },
     )
-    system_df = profile_df[
-        [
-            "vmstat_interrupts_per_s_mean",
-            "vmstat_context_switches_per_s_mean",
-            "vmstat_run_queue_mean",
-            "perf_cache_misses_mean",
-            "perf_context_switches_mean",
-            "perf_cpu_migrations_mean",
-            "perf_page_faults_mean",
-            "perf_unsupported_events",
-            "strace_events_per_s_peak",
-            "strace_duration_ms_per_s_peak",
-            "strace_top_syscall",
-            "strace_top_syscall_total_duration_sec",
-        ]
-    ].rename(
-        columns={
-            "vmstat_interrupts_per_s_mean": "interrupts_per_s",
-            "vmstat_context_switches_per_s_mean": "system_context_switches_per_s",
-            "vmstat_run_queue_mean": "run_queue",
-            "perf_cache_misses_mean": "perf_cache_misses",
-            "perf_context_switches_mean": "perf_context_switches",
-            "perf_cpu_migrations_mean": "perf_cpu_migrations",
-            "perf_page_faults_mean": "perf_page_faults",
-            "perf_unsupported_events": "perf_unsupported_events",
-            "strace_events_per_s_peak": "strace_events_per_s_peak",
-            "strace_duration_ms_per_s_peak": "strace_duration_ms_per_s_peak",
-            "strace_top_syscall": "strace_top_syscall",
-            "strace_top_syscall_total_duration_sec": "strace_top_syscall_total_duration_sec",
-        }
-    )
-    peak_table_df = peak_df
 
     table_map = {
         "latency_overview": latency_overview_df,
         "run_timing": run_timing_df,
         "latency_phase_means": phase_df,
         "latency_tail": tail_df,
-        "machine_metrics": machine_df,
-        "process_metrics": process_df,
+        "system_cpu_metrics": system_cpu_df,
+        "system_memory_metrics": system_memory_df,
+        "system_disk_metrics": system_disk_df,
+        "system_activity_metrics": system_activity_df,
         "npu_metrics": npu_df,
-        "disk_metrics": disk_df,
-        "system_metrics": system_df,
-        "timeline_peaks": peak_table_df,
-        "strace_key_syscalls": strace_key_syscalls_df,
-        "gateway_runtime_metrics": gateway_runtime_df,
-        "node_focus_groups": node_focus_groups_df,
-        "node_runtime_metrics": node_runtime_df,
-        "node_runtime_mean_duration_ms": node_runtime_mean_duration_df,
-        "runtime_category_samples": runtime_category_df,
-        "runtime_category_pct": runtime_category_pct_df,
+        "token_throughput_metrics": token_throughput_df,
+        "system_timeline_peaks": peak_df,
     }
     for table_name, df in table_map.items():
         pair.save_dataframe(df, tri_dir / "tables" / f"{table_name}.csv")
-
-    scenario_tables: list[dict[str, Any]] = []
-    for record in summary_records:
-        scenario_name = str(record["name"])
-        display_name = str(record["display_name"])
-        scenario_slug = pair.safe_slug(scenario_name)
-        strace_top_df = pair.build_strace_top_table(record["summary"])
-        node_paths_df = pair.build_node_trace_top_paths_table(record["summary"])
-        node_categories_df = pair.build_node_trace_path_categories_table(record["summary"])
-        if strace_top_df is not None:
-            pair.save_dataframe(
-                strace_top_df,
-                tri_dir / "tables" / f"{scenario_slug}_strace_top_syscalls.csv",
-            )
-        if node_paths_df is not None:
-            pair.save_dataframe(
-                node_paths_df,
-                tri_dir / "tables" / f"{scenario_slug}_node_trace_top_paths.csv",
-            )
-        if node_categories_df is not None:
-            pair.save_dataframe(
-                node_categories_df,
-                tri_dir / "tables" / f"{scenario_slug}_node_trace_path_categories.csv",
-            )
-        scenario_tables.append(
-            {
-                "name": scenario_name,
-                "display_name": display_name,
-                "strace_top_df": strace_top_df,
-                "node_paths_df": node_paths_df,
-                "node_categories_df": node_categories_df,
-            }
-        )
 
     if render_figures:
         pair.plt.style.use("seaborn-v0_8-whitegrid")
@@ -629,11 +824,43 @@ def build_triplet_outputs(
             tri_dir / "figures" / "latency_tail.png",
         )
         pair.plot_dataframe(
-            machine_cpu_mem_df,
-            "System CPU and Memory",
-            "mean value",
-            tri_dir / "figures" / "system_cpu_mem.png",
+            system_cpu_df,
+            "Benchmark CPU Metrics",
+            "mean percent",
+            tri_dir / "figures" / "system_cpu_metrics.png",
         )
+        pair.plot_dataframe(
+            system_memory_df,
+            "Benchmark Memory Metrics",
+            "mean KiB",
+            tri_dir / "figures" / "system_memory_metrics.png",
+        )
+        pair.plot_dataframe(
+            system_disk_df.drop(columns=["busiest_device"]),
+            "System Disk Metrics",
+            "mean value",
+            tri_dir / "figures" / "system_disk_metrics.png",
+        )
+        pair.plot_dataframe(
+            system_activity_df,
+            "System Activity Metrics",
+            "mean value",
+            tri_dir / "figures" / "system_activity_metrics.png",
+        )
+        if dataframe_has_values(token_throughput_df):
+            pair.plot_dataframe(
+                non_empty_columns(token_throughput_df),
+                "Token Throughput Metrics",
+                "mean value",
+                tri_dir / "figures" / "token_throughput_metrics.png",
+            )
+        if dataframe_has_values(npu_df):
+            pair.plot_dataframe(
+                non_empty_columns(npu_df),
+                "NPU Metrics",
+                "mean percent",
+                tri_dir / "figures" / "npu_metrics.png",
+            )
         plot_latency_timeline_multi(
             [
                 {
@@ -644,409 +871,223 @@ def build_triplet_outputs(
             ],
             tri_dir / "figures" / "latency_timeline.png",
         )
-        pair.plot_actual_request_timeline(
+        pair.plot_request_gantt_multi(
             run_specs=[
                 {
                     "label": record["display_name"],
+                    "run_dir": record["run_dir"],
                     "csv_path": record["run_dir"] / "latency.csv",
                 }
                 for record in summary_records
             ],
-            title="Actual Request Timeline (Wall Clock, Total + First Connect)",
+            title="Request Gantt Timeline",
             output_path=tri_dir / "figures" / "actual_request_timeline.png",
         )
-        plot_time_series_panels_multi(
-            panel_specs=[
+        pair.plot_request_aligned_npu_activity(
+            run_specs=[
                 {
-                    "subtitle": "System CPU User",
-                    "ylabel": "percent",
-                    "series": build_series(
-                        summary_records,
-                        ["collector_analysis", "vmstat", "time_series", "us"],
-                    ),
-                },
-                {
-                    "subtitle": "System CPU iowait",
-                    "ylabel": "percent",
-                    "series": build_series(
-                        summary_records,
-                        ["collector_analysis", "vmstat", "time_series", "wa"],
-                    ),
-                },
+                    "label": record["display_name"],
+                    "run_dir": record["run_dir"],
+                    "csv_path": record["run_dir"] / "latency.csv",
+                }
+                for record in summary_records
             ],
-            title="CPU Load Timeline",
-            output_path=tri_dir / "figures" / "cpu_load_timeline.png",
+            title="AICore Usage vs Request Activity",
+            output_path=tri_dir / "figures" / "aicore_request_alignment.png",
         )
         plot_time_series_panels_multi(
             panel_specs=[
                 {
-                    "subtitle": "System Free Memory",
-                    "ylabel": "KiB",
-                    "series": build_series(
+                    "subtitle": "Benchmark Process CPU Percent (sum across instances)",
+                    "ylabel": "percent",
+                    "series": build_aggregated_series(
                         summary_records,
-                        ["collector_analysis", "vmstat", "time_series", "free"],
+                        ["pidstat", "sections", "cpu", "time_series", "pct_cpu"],
+                        mode="sum",
                     ),
                 },
                 {
-                    "subtitle": "System Page Cache",
-                    "ylabel": "KiB",
-                    "series": build_series(
+                    "subtitle": "Benchmark User CPU Percent (sum across instances)",
+                    "ylabel": "percent",
+                    "series": build_aggregated_series(
                         summary_records,
-                        ["collector_analysis", "vmstat", "time_series", "cache"],
+                        ["pidstat", "sections", "cpu", "time_series", "pct_usr"],
+                        mode="sum",
+                    ),
+                },
+                {
+                    "subtitle": "Benchmark System CPU Percent (sum across instances)",
+                    "ylabel": "percent",
+                    "series": build_aggregated_series(
+                        summary_records,
+                        ["pidstat", "sections", "cpu", "time_series", "pct_system"],
+                        mode="sum",
+                    ),
+                },
+                {
+                    "subtitle": "VM Run Queue (mean across instance collectors)",
+                    "ylabel": "processes",
+                    "series": build_aggregated_series(
+                        summary_records,
+                        ["vmstat", "key_time_series", "run_queue"],
+                        mode="mean",
                     ),
                 },
             ],
-            title="Memory Load Timeline",
-            output_path=tri_dir / "figures" / "mem_load_timeline.png",
+            title="System CPU Timeline",
+            output_path=tri_dir / "figures" / "system_cpu_timeline.png",
         )
         plot_time_series_panels_multi(
             panel_specs=[
                 {
-                    "subtitle": "Disk Write Throughput (Busiest Device)",
-                    "ylabel": "KiB/sec",
-                    "series": build_series(
+                    "subtitle": "Benchmark RSS Total (sum across instances)",
+                    "ylabel": "KiB",
+                    "series": build_aggregated_series(
                         summary_records,
-                        ["collector_analysis", "iostat", "key_time_series", "wkb_s"],
+                        ["pidstat", "sections", "memory", "time_series", "rss_kib"],
+                        mode="sum",
                     ),
                 },
+            ],
+            title="System Memory Timeline",
+            output_path=tri_dir / "figures" / "system_memory_timeline.png",
+        )
+        plot_time_series_panels_multi(
+            panel_specs=[
                 {
-                    "subtitle": "Disk Utilization (Busiest Device)",
+                    "subtitle": "Disk Utilization (mean across instance collectors)",
                     "ylabel": "percent",
-                    "series": build_series(
+                    "series": build_aggregated_series(
                         summary_records,
-                        ["collector_analysis", "iostat", "key_time_series", "pct_util"],
+                        ["iostat", "key_time_series", "pct_util"],
+                        mode="mean",
                     ),
                 },
                 {
-                    "subtitle": "Disk Write Await (Busiest Device)",
+                    "subtitle": "Disk Write Await (mean across instance collectors)",
                     "ylabel": "ms",
-                    "series": build_series(
+                    "series": build_aggregated_series(
                         summary_records,
-                        ["collector_analysis", "iostat", "key_time_series", "w_await"],
+                        ["iostat", "key_time_series", "w_await"],
+                        mode="mean",
+                    ),
+                },
+                {
+                    "subtitle": "Disk Write Throughput (mean across instance collectors)",
+                    "ylabel": "KiB/sec",
+                    "series": build_aggregated_series(
+                        summary_records,
+                        ["iostat", "key_time_series", "wkb_s"],
+                        mode="mean",
+                    ),
+                },
+                {
+                    "subtitle": "Benchmark Process Write Throughput (sum across instances)",
+                    "ylabel": "KiB/sec",
+                    "series": build_aggregated_series(
+                        summary_records,
+                        ["pidstat", "sections", "io", "time_series", "kb_wr_per_s"],
+                        mode="sum",
                     ),
                 },
             ],
-            title="I/O Load Timeline",
-            output_path=tri_dir / "figures" / "io_load_timeline.png",
+            title="System I/O Timeline",
+            output_path=tri_dir / "figures" / "system_io_timeline.png",
         )
         plot_time_series_panels_multi(
             panel_specs=[
                 {
                     "subtitle": "Interrupts per Second",
                     "ylabel": "interrupts/sec",
-                    "series": build_series(
+                    "series": build_aggregated_series(
                         summary_records,
-                        ["collector_analysis", "vmstat", "key_time_series", "interrupts_per_s"],
-                    ),
-                },
-            ],
-            title="Interrupt Timeline",
-            output_path=tri_dir / "figures" / "interrupts_timeline.png",
-        )
-        plot_time_series_panels_multi(
-            panel_specs=[
-                {
-                    "subtitle": "NPU Utilization (Avg 16 Chips)",
-                    "ylabel": "percent",
-                    "series": build_series(
-                        summary_records,
-                        ["collector_analysis", "npu_smi", "key_time_series", "npu_utilization_pct"],
+                        ["vmstat", "key_time_series", "interrupts_per_s"],
+                        mode="mean",
                     ),
                 },
                 {
-                    "subtitle": "HBM Usage Rate (Avg 16 Chips)",
-                    "ylabel": "percent",
-                    "series": build_series(
-                        summary_records,
-                        ["collector_analysis", "npu_smi", "key_time_series", "hbm_usage_rate_pct"],
-                    ),
-                },
-                {
-                    "subtitle": "AICore Usage Rate (Avg 16 Chips)",
-                    "ylabel": "percent",
-                    "series": build_series(
-                        summary_records,
-                        ["collector_analysis", "npu_smi", "key_time_series", "aicore_usage_rate_pct"],
-                    ),
-                },
-                {
-                    "subtitle": "CtrlCPU Usage Rate (Avg 16 Chips)",
-                    "ylabel": "percent",
-                    "series": build_series(
-                        summary_records,
-                        ["collector_analysis", "npu_smi", "key_time_series", "ctrlcpu_usage_rate_pct"],
-                    ),
-                },
-            ],
-            title="NPU Load Timeline",
-            output_path=tri_dir / "figures" / "npu_load_timeline.png",
-        )
-        plot_time_series_panels_multi(
-            panel_specs=[
-                {
-                    "subtitle": "VM Context Switches",
+                    "subtitle": "System Context Switches per Second",
                     "ylabel": "switches/sec",
-                    "series": build_series(
+                    "series": build_aggregated_series(
                         summary_records,
-                        ["collector_analysis", "vmstat", "key_time_series", "context_switches_per_s"],
+                        ["vmstat", "key_time_series", "context_switches_per_s"],
+                        mode="mean",
                     ),
                 },
                 {
-                    "subtitle": "Process Voluntary Context Switches",
+                    "subtitle": "Benchmark Voluntary Context Switches (sum across instances)",
                     "ylabel": "switches/sec",
-                    "series": build_series(
+                    "series": build_aggregated_series(
                         summary_records,
-                        [
-                            "collector_analysis",
-                            "pidstat",
-                            "sections",
-                            "context_switch",
-                            "time_series",
-                            "cswch_per_s",
-                        ],
+                        ["pidstat", "sections", "context_switch", "time_series", "cswch_per_s"],
+                        mode="sum",
                     ),
                 },
                 {
-                    "subtitle": "perf context-switches",
-                    "ylabel": "events/sec",
-                    "series": build_series(
+                    "subtitle": "Blocked Processes",
+                    "ylabel": "processes",
+                    "series": build_aggregated_series(
                         summary_records,
-                        ["collector_analysis", "perf_stat", "key_time_series", "context_switches"],
+                        ["vmstat", "key_time_series", "blocked_processes"],
+                        mode="mean",
                     ),
                 },
             ],
-            title="Context Switch Timeline",
-            output_path=tri_dir / "figures" / "context_switch_timeline.png",
+            title="System Activity Timeline",
+            output_path=tri_dir / "figures" / "system_activity_timeline.png",
         )
         plot_time_series_panels_multi(
             panel_specs=[
                 {
-                    "subtitle": "strace Events per Second",
-                    "ylabel": "events/sec",
-                    "series": build_series(
+                    "subtitle": "NPU Utilization (mean across instance collectors)",
+                    "ylabel": "percent",
+                    "series": build_aggregated_series(
                         summary_records,
-                        ["collector_analysis", "strace", "time_series", "events_per_s"],
+                        ["npu_smi", "key_time_series", "npu_utilization_pct"],
+                        mode="mean",
                     ),
                 },
                 {
-                    "subtitle": "strace Duration per Second",
-                    "ylabel": "ms/sec",
-                    "series": build_series(
+                    "subtitle": "AICore Usage Rate (mean across instance collectors)",
+                    "ylabel": "percent",
+                    "series": build_aggregated_series(
                         summary_records,
-                        ["collector_analysis", "strace", "time_series", "duration_ms_per_s"],
+                        ["npu_smi", "key_time_series", "aicore_usage_rate_pct"],
+                        mode="mean",
+                    ),
+                },
+                {
+                    "subtitle": "HBM Usage Rate (mean across instance collectors)",
+                    "ylabel": "percent",
+                    "series": build_aggregated_series(
+                        summary_records,
+                        ["npu_smi", "key_time_series", "hbm_usage_rate_pct"],
+                        mode="mean",
                     ),
                 },
             ],
-            title="strace Timeline",
-            output_path=tri_dir / "figures" / "strace_timeline.png",
-        )
-        pair.plot_dataframe(
-            strace_mean_duration_df,
-            "strace Mean Syscall Duration",
-            "milliseconds",
-            tri_dir / "figures" / "strace_mean_duration_ms.png",
-        )
-        pair.plot_dataframe(
-            runtime_category_pct_df,
-            "perf Runtime Sample Categories",
-            "percent of samples",
-            tri_dir / "figures" / "runtime_category_pct.png",
-        )
-        if pair.has_dataframe_data(node_runtime_mean_duration_df):
-            pair.plot_dataframe(
-                node_runtime_mean_duration_df,
-                "Node Runtime Mean Duration",
-                "milliseconds",
-                tri_dir / "figures" / "node_runtime_mean_duration_ms.png",
-            )
-        pair.plot_dataframe(
-            node_focus_groups_duration_df,
-            "Node Focus Group Duration",
-            "total duration (ms)",
-            tri_dir / "figures" / "node_focus_group_duration_ms.png",
-        )
-        plot_time_series_panels_multi(
-            panel_specs=[
-                {
-                    "subtitle": "Execution Admission Wait",
-                    "ylabel": "ms",
-                    "series": build_series(
-                        summary_records,
-                        [
-                            "collector_analysis",
-                            "gateway_runtime_spans",
-                            "time_series",
-                            "execution_admission_wait_ms",
-                        ],
-                    ),
-                },
-                {
-                    "subtitle": "Bootstrap Load Duration",
-                    "ylabel": "ms",
-                    "series": build_series(
-                        summary_records,
-                        [
-                            "collector_analysis",
-                            "gateway_runtime_spans",
-                            "time_series",
-                            "bootstrap_load_duration_ms",
-                        ],
-                    ),
-                },
-                {
-                    "subtitle": "Skills Duration",
-                    "ylabel": "ms",
-                    "series": build_series(
-                        summary_records,
-                        ["collector_analysis", "gateway_runtime_spans", "time_series", "skills_duration_ms"],
-                    ),
-                },
-                {
-                    "subtitle": "Context Bundle Duration",
-                    "ylabel": "ms",
-                    "series": build_series(
-                        summary_records,
-                        [
-                            "collector_analysis",
-                            "gateway_runtime_spans",
-                            "time_series",
-                            "context_bundle_duration_ms",
-                        ],
-                    ),
-                },
-                {
-                    "subtitle": "Reply Dispatch Queue Wait",
-                    "ylabel": "ms",
-                    "series": build_series(
-                        summary_records,
-                        [
-                            "collector_analysis",
-                            "gateway_runtime_spans",
-                            "time_series",
-                            "reply_dispatch_queue_wait_ms",
-                        ],
-                    ),
-                },
-            ],
-            title="Gateway Runtime Timeline",
-            output_path=tri_dir / "figures" / "gateway_runtime_timeline.png",
-        )
-        plot_time_series_panels_multi(
-            panel_specs=[
-                {
-                    "subtitle": "FS Async Duration per Second",
-                    "ylabel": "ms/sec",
-                    "series": build_series(
-                        summary_records,
-                        ["collector_analysis", "node_trace", "time_series", "fs_async_duration_ms_per_s"],
-                    ),
-                },
-                {
-                    "subtitle": "FS Callback Duration per Second",
-                    "ylabel": "ms/sec",
-                    "series": build_series(
-                        summary_records,
-                        ["collector_analysis", "node_trace", "time_series", "fs_callback_duration_ms_per_s"],
-                    ),
-                },
-                {
-                    "subtitle": "Promise Callback Duration per Second",
-                    "ylabel": "ms/sec",
-                    "series": build_series(
-                        summary_records,
-                        [
-                            "collector_analysis",
-                            "node_trace",
-                            "time_series",
-                            "promise_callback_duration_ms_per_s",
-                        ],
-                    ),
-                },
-                {
-                    "subtitle": "Event Loop Duration per Second",
-                    "ylabel": "ms/sec",
-                    "series": build_series(
-                        summary_records,
-                        ["collector_analysis", "node_trace", "time_series", "event_loop_duration_ms_per_s"],
-                    ),
-                },
-            ],
-            title="Node Runtime Timeline",
-            output_path=tri_dir / "figures" / "node_runtime_timeline.png",
-        )
-        plot_time_series_panels_multi(
-            panel_specs=[
-                {
-                    "subtitle": "sessions.json.lock Duration per Second",
-                    "ylabel": "ms/sec",
-                    "series": build_series(
-                        summary_records,
-                        ["collector_analysis", "node_trace", "time_series", "sessions_lock_duration_ms_per_s"],
-                    ),
-                },
-                {
-                    "subtitle": "sessions.json Duration per Second",
-                    "ylabel": "ms/sec",
-                    "series": build_series(
-                        summary_records,
-                        ["collector_analysis", "node_trace", "time_series", "sessions_json_duration_ms_per_s"],
-                    ),
-                },
-                {
-                    "subtitle": "sessions/ Directory Duration per Second",
-                    "ylabel": "ms/sec",
-                    "series": build_series(
-                        summary_records,
-                        [
-                            "collector_analysis",
-                            "node_trace",
-                            "time_series",
-                            "sessions_dir_enum_duration_ms_per_s",
-                        ],
-                    ),
-                },
-                {
-                    "subtitle": "sessions.json.<tmp> Duration per Second",
-                    "ylabel": "ms/sec",
-                    "series": build_series(
-                        summary_records,
-                        ["collector_analysis", "node_trace", "time_series", "sessions_tmp_duration_ms_per_s"],
-                    ),
-                },
-                {
-                    "subtitle": "Bootstrap Files Duration per Second",
-                    "ylabel": "ms/sec",
-                    "series": build_series(
-                        summary_records,
-                        ["collector_analysis", "node_trace", "time_series", "bootstrap_files_duration_ms_per_s"],
-                    ),
-                },
-            ],
-            title="Node Focus Timeline",
-            output_path=tri_dir / "figures" / "node_focus_timeline.png",
+            title="NPU Timeline",
+            output_path=tri_dir / "figures" / "npu_timeline.png",
         )
 
     figure_paths = [
         ("Latency Overview", tri_dir / "figures" / "latency_overview.png"),
         ("Latency Phase Means", tri_dir / "figures" / "latency_phase_means.png"),
         ("Latency Tail", tri_dir / "figures" / "latency_tail.png"),
-        ("System CPU and Memory", tri_dir / "figures" / "system_cpu_mem.png"),
         ("Latency Timeline", tri_dir / "figures" / "latency_timeline.png"),
-        ("Actual Request Timeline", tri_dir / "figures" / "actual_request_timeline.png"),
-        ("CPU Load Timeline", tri_dir / "figures" / "cpu_load_timeline.png"),
-        ("Memory Load Timeline", tri_dir / "figures" / "mem_load_timeline.png"),
-        ("I/O Load Timeline", tri_dir / "figures" / "io_load_timeline.png"),
-        ("Interrupt Timeline", tri_dir / "figures" / "interrupts_timeline.png"),
-        ("NPU Load Timeline", tri_dir / "figures" / "npu_load_timeline.png"),
-        ("Context Switch Timeline", tri_dir / "figures" / "context_switch_timeline.png"),
-        ("strace Timeline", tri_dir / "figures" / "strace_timeline.png"),
-        ("strace Mean Duration", tri_dir / "figures" / "strace_mean_duration_ms.png"),
-        ("Gateway Runtime Timeline", tri_dir / "figures" / "gateway_runtime_timeline.png"),
-        ("Node Focus Group Duration", tri_dir / "figures" / "node_focus_group_duration_ms.png"),
-        ("Node Focus Timeline", tri_dir / "figures" / "node_focus_timeline.png"),
-        ("Node Runtime Mean Duration", tri_dir / "figures" / "node_runtime_mean_duration_ms.png"),
-        ("Node Runtime Timeline", tri_dir / "figures" / "node_runtime_timeline.png"),
-        ("Runtime Category Samples", tri_dir / "figures" / "runtime_category_pct.png"),
+        ("Request Gantt Timeline", tri_dir / "figures" / "actual_request_timeline.png"),
+        ("AICore vs Request Activity", tri_dir / "figures" / "aicore_request_alignment.png"),
+        ("System CPU Metrics", tri_dir / "figures" / "system_cpu_metrics.png"),
+        ("System CPU Timeline", tri_dir / "figures" / "system_cpu_timeline.png"),
+        ("System Memory Metrics", tri_dir / "figures" / "system_memory_metrics.png"),
+        ("System Memory Timeline", tri_dir / "figures" / "system_memory_timeline.png"),
+        ("System Disk Metrics", tri_dir / "figures" / "system_disk_metrics.png"),
+        ("System I/O Timeline", tri_dir / "figures" / "system_io_timeline.png"),
+        ("System Activity Metrics", tri_dir / "figures" / "system_activity_metrics.png"),
+        ("System Activity Timeline", tri_dir / "figures" / "system_activity_timeline.png"),
+        ("Token Throughput Metrics", tri_dir / "figures" / "token_throughput_metrics.png"),
+        ("NPU Metrics", tri_dir / "figures" / "npu_metrics.png"),
+        ("NPU Timeline", tri_dir / "figures" / "npu_timeline.png"),
     ]
     figure_lines = [
         f"- ![{label}](figures/{path.name})"
@@ -1059,19 +1100,23 @@ def build_triplet_outputs(
     report_lines = [
         "## " + " vs ".join(f"`{display_name}`" for display_name in normalized_display_names),
         "",
-        f"Generated at: {render_generated_timestamp()}",
-        "",
         "**Run Dirs**",
         "",
-        pair.dataframe_to_markdown(profile_copy[["run_dir", "requests_total", "requests_ok", "requests_failed"]]),
+        pair.dataframe_to_markdown(profile_copy[["run_dir", "instance_num", "requests_total", "requests_ok", "requests_failed"]]),
         "",
-        "**Run Timing Table**",
+        "**Aggregation Policy**",
         "",
-        pair.dataframe_to_markdown(run_timing_df),
+        "- `pidstat` per-process metrics are summed across instances.",
+        "- `iostat` and `vmstat` host-wide metrics are averaged across instance collectors.",
+        "- This makes multi-instance runs comparable with single-instance runs at the whole-machine level.",
         "",
         "**Figures**",
         "",
         *figure_lines,
+        "",
+        "**Run Timing Table**",
+        "",
+        pair.dataframe_to_markdown(run_timing_df),
         "",
         "**Latency Overview Table**",
         "",
@@ -1085,103 +1130,35 @@ def build_triplet_outputs(
         "",
         pair.dataframe_to_markdown(tail_df),
         "",
-        "**Machine Metrics Table**",
+        "**System CPU Table**",
         "",
-        pair.dataframe_to_markdown(machine_df),
+        pair.dataframe_to_markdown(system_cpu_df),
         "",
-        "**Process Metrics Table**",
+        "**System Memory Table**",
         "",
-        pair.dataframe_to_markdown(process_df),
+        pair.dataframe_to_markdown(system_memory_df),
         "",
-        "**NPU Metrics Table**",
+        "**System Disk Table**",
+        "",
+        pair.dataframe_to_markdown(system_disk_df),
+        "",
+        "**System Activity Table**",
+        "",
+        pair.dataframe_to_markdown(system_activity_df),
+        "",
+        "**Token Throughput Table**",
+        "",
+        pair.dataframe_to_markdown(token_throughput_df),
+        "",
+        "**NPU Table**",
         "",
         pair.dataframe_to_markdown(npu_df),
         "",
-        "**Disk Metrics Table**",
+        "**System Timeline Peaks Table**",
         "",
-        pair.dataframe_to_markdown(disk_df),
-        "",
-        "**System Metrics Table**",
-        "",
-        pair.dataframe_to_markdown(system_df),
-        "",
-        "**Timeline Peaks Table**",
-        "",
-        pair.dataframe_to_markdown(peak_table_df),
-        "",
-        "**strace Key Syscalls Table**",
-        "",
-        pair.dataframe_to_markdown(strace_key_syscalls_df),
-        "",
-        "**strace Mean Duration Table**",
-        "",
-        pair.dataframe_to_markdown(strace_mean_duration_df),
-        "",
-        "**Gateway Runtime Stage Table**",
-        "",
-        pair.dataframe_to_markdown(gateway_runtime_df),
-        "",
-        "**Node Focus Groups Table**",
-        "",
-        pair.dataframe_to_markdown(node_focus_groups_df),
-        "",
-        "**Runtime Category Samples Table**",
-        "",
-        pair.dataframe_to_markdown(runtime_category_df),
-        "",
-        "**Runtime Category Percent Table**",
-        "",
-        pair.dataframe_to_markdown(runtime_category_pct_df),
+        pair.dataframe_to_markdown(peak_df),
         "",
     ]
-    if pair.has_dataframe_data(node_runtime_df):
-        report_lines.extend(
-            [
-                "**Node Runtime Metrics Table**",
-                "",
-                pair.dataframe_to_markdown(node_runtime_df),
-                "",
-            ]
-        )
-    if pair.has_dataframe_data(node_runtime_mean_duration_df):
-        report_lines.extend(
-            [
-                "**Node Runtime Mean Duration Table**",
-                "",
-                pair.dataframe_to_markdown(node_runtime_mean_duration_df),
-                "",
-            ]
-        )
-
-    for scenario_table in scenario_tables:
-        if scenario_table["strace_top_df"] is not None:
-            report_lines.extend(
-                [
-                    f"**Top strace Syscalls: `{scenario_table['display_name']}`**",
-                    "",
-                    pair.dataframe_to_markdown(scenario_table["strace_top_df"].set_index("syscall")),
-                    "",
-                ]
-            )
-        if scenario_table["node_paths_df"] is not None:
-            report_lines.extend(
-                [
-                    f"**Top Node FS Paths: `{scenario_table['display_name']}`**",
-                    "",
-                    pair.dataframe_to_markdown(scenario_table["node_paths_df"].set_index("path")),
-                    "",
-                ]
-            )
-        if scenario_table["node_categories_df"] is not None:
-            report_lines.extend(
-                [
-                    f"**Node FS Path Categories: `{scenario_table['display_name']}`**",
-                    "",
-                    pair.dataframe_to_markdown(scenario_table["node_categories_df"].set_index("category")),
-                    "",
-                ]
-            )
-
     (tri_dir / "summary.md").write_text("\n".join(report_lines).rstrip() + "\n", encoding="utf-8")
 
     return {
@@ -1196,8 +1173,12 @@ def main() -> int:
     res_root = Path(args.res_root).resolve()
     res_root.mkdir(parents=True, exist_ok=True)
     label_groups = args.labels or []
+    report_dir_names = args.report_dir_name or []
     if label_groups and len(label_groups) != len(args.tri):
         print("--labels must be repeated exactly once per --tri when provided", file=sys.stderr)
+        return 2
+    if report_dir_names and len(report_dir_names) != len(args.tri):
+        print("--report-dir-name must be repeated exactly once per --tri when provided", file=sys.stderr)
         return 2
     render_figures = not args.skip_figures
     if render_figures and pair.plt is None:
@@ -1211,6 +1192,7 @@ def main() -> int:
                 res_root=res_root,
                 scenario_names=[scenario_a, scenario_b, scenario_c],
                 display_names=label_groups[index] if label_groups else None,
+                report_dir_name=report_dir_names[index] if report_dir_names else None,
                 render_figures=render_figures,
             )
         except ValueError as exc:

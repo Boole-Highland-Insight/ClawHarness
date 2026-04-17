@@ -6,6 +6,7 @@ import argparse
 import copy
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -28,6 +29,7 @@ class OverrideSpec:
 @dataclass(frozen=True, slots=True)
 class ClientVariant:
     key: str
+    task_bucket: str
     overrides: tuple[OverrideSpec, ...]
 
 
@@ -54,6 +56,7 @@ class BatchConfig:
     run_tag: str
     keep_runtime: bool
     continue_on_error: bool
+    skip_completed: bool
     dry_run: bool
     base_overrides: tuple[OverrideSpec, ...]
     client_variants: tuple[ClientVariant, ...]
@@ -169,6 +172,21 @@ def parse_override_mapping(raw: Any, *, label: str) -> tuple[OverrideSpec, ...]:
     )
 
 
+def normalize_task_bucket(raw_value: str) -> str:
+    slug = safe_slug(raw_value)
+    match = re.search(r"\btask-(\d+)\b", slug)
+    if match:
+        digits = match.group(1)
+        return f"task-{digits.zfill(max(2, len(digits)))}"
+    return slug or "default"
+
+
+def infer_task_bucket(*, client_key: str, task_file: str) -> str:
+    if task_file.strip():
+        return normalize_task_bucket(Path(task_file).stem)
+    return normalize_task_bucket(client_key)
+
+
 def parse_client_variants(raw: Any) -> tuple[ClientVariant, ...]:
     if not isinstance(raw, list) or not raw:
         raise ValueError("client_variants must be a non-empty JSON array")
@@ -192,7 +210,13 @@ def parse_client_variants(raw: Any) -> tuple[ClientVariant, ...]:
             overrides.append(OverrideSpec(path="client.task_file", value=""))
         overrides.append(OverrideSpec(path="client.message", value=message))
 
-        variants.append(ClientVariant(key=key, overrides=tuple(overrides)))
+        variants.append(
+            ClientVariant(
+                key=key,
+                task_bucket=infer_task_bucket(client_key=key, task_file=task_file),
+                overrides=tuple(overrides),
+            ),
+        )
     return tuple(variants)
 
 
@@ -260,6 +284,11 @@ def load_batch_config(path: Path) -> BatchConfig:
         continue_on_error=parse_bool(
             raw.get("continue_on_error"),
             label="continue_on_error",
+            default=False,
+        ),
+        skip_completed=parse_bool(
+            raw.get("skip_completed"),
+            label="skip_completed",
             default=False,
         ),
         dry_run=parse_bool(raw.get("dry_run"), label="dry_run", default=False),
@@ -390,9 +419,77 @@ def build_command(
     return command
 
 
+def iter_completed_run_dirs(output_root: Path) -> list[Path]:
+    if not output_root.exists():
+        return []
+
+    run_dirs: list[Path] = []
+    for resolved_path in sorted(output_root.rglob("scenario.resolved.json"), reverse=True):
+        run_dir = resolved_path.parent
+        try:
+            relative_parts = run_dir.relative_to(output_root).parts
+        except ValueError:
+            continue
+        if "instances" in relative_parts:
+            continue
+        if not (run_dir / "summary.json").is_file():
+            continue
+        run_dirs.append(run_dir)
+    return run_dirs
+
+
+def project_like(source: Any, template: Any) -> Any:
+    if isinstance(template, dict):
+        if not isinstance(source, dict):
+            return source
+        return {
+            key: project_like(source[key], value)
+            for key, value in template.items()
+            if key in source
+        }
+    if isinstance(template, list):
+        if not isinstance(source, list):
+            return source
+        return [
+            project_like(source_item, template_item)
+            for source_item, template_item in zip(source, template)
+        ]
+    return source
+
+
+def load_completed_runs(output_root: Path) -> list[dict[str, Any]]:
+    completed_runs: list[dict[str, Any]] = []
+    for run_dir in iter_completed_run_dirs(output_root):
+        resolved_path = run_dir / "scenario.resolved.json"
+        try:
+            resolved_payload = load_json(resolved_path)
+        except (OSError, ValueError, json.JSONDecodeError):
+            continue
+        completed_runs.append(
+            {
+                "run_dir": run_dir,
+                "resolved_payload": resolved_payload,
+            },
+        )
+    return completed_runs
+
+
+def find_completed_match(
+    *,
+    spec_payload: dict[str, Any],
+    completed_runs: list[dict[str, Any]],
+) -> Path | None:
+    for completed in completed_runs:
+        resolved_payload = completed["resolved_payload"]
+        if project_like(resolved_payload, spec_payload) == spec_payload:
+            return completed["run_dir"]
+    return None
+
+
 def write_generated_scenarios(config: BatchConfig, *, batch_dir: Path) -> list[dict[str, Any]]:
     base_payload = load_json(config.template_scenario)
     run_specs: list[dict[str, Any]] = []
+    manifest_runs: list[dict[str, Any]] = []
     sequence = 1
 
     for client_variant in config.client_variants:
@@ -430,22 +527,31 @@ def write_generated_scenarios(config: BatchConfig, *, batch_dir: Path) -> list[d
                     json.dumps(payload, indent=2, ensure_ascii=True) + "\n",
                     encoding="utf-8",
                 )
-                run_specs.append(
+                spec = {
+                    "index": sequence,
+                    "client_key": client_variant.key,
+                    "task_bucket": client_variant.task_bucket,
+                    "run_key": run_variant.key,
+                    "override_key": override_variant.key,
+                    "generated_path": str(generated_path),
+                    "scenario_name": payload["name"],
+                    "session_prefix": payload["client"]["session_prefix"],
+                    "task_output_root": str(config.output_root / client_variant.task_bucket),
+                    "overrides": {spec.path: spec.value for spec in overrides},
+                    "command": build_command(
+                        python_bin=config.python_bin,
+                        scenario_path=generated_path,
+                        output_root=config.output_root / client_variant.task_bucket,
+                        keep_runtime=config.keep_runtime,
+                    ),
+                    "payload": payload,
+                }
+                run_specs.append(spec)
+                manifest_runs.append(
                     {
-                        "index": sequence,
-                        "client_key": client_variant.key,
-                        "run_key": run_variant.key,
-                        "override_key": override_variant.key,
-                        "generated_path": str(generated_path),
-                        "scenario_name": payload["name"],
-                        "session_prefix": payload["client"]["session_prefix"],
-                        "overrides": {spec.path: spec.value for spec in overrides},
-                        "command": build_command(
-                            python_bin=config.python_bin,
-                            scenario_path=generated_path,
-                            output_root=config.output_root,
-                            keep_runtime=config.keep_runtime,
-                        ),
+                        key: value
+                        for key, value in spec.items()
+                        if key != "payload"
                     },
                 )
                 sequence += 1
@@ -456,7 +562,7 @@ def write_generated_scenarios(config: BatchConfig, *, batch_dir: Path) -> list[d
             {
                 "config_path": str(config.config_path),
                 "template_scenario": str(config.template_scenario),
-                "runs": run_specs,
+                "runs": manifest_runs,
             },
             indent=2,
             ensure_ascii=True,
@@ -477,6 +583,8 @@ def run_batch(
     env = os.environ.copy()
     env["PYTHONPATH"] = build_pythonpath()
     failures: list[dict[str, Any]] = []
+    skipped = 0
+    completed_runs = load_completed_runs(config.output_root) if config.skip_completed else []
 
     for spec in run_specs:
         command = list(spec["command"])
@@ -491,9 +599,23 @@ def run_batch(
         print(f"  template        : {config.template_scenario}")
         print(f"  batch dir       : {batch_dir}")
         print(f"  generated file  : {spec['generated_path']}")
+        print(f"  task bucket     : {spec['task_bucket']}")
+        print(f"  task out root   : {spec['task_output_root']}")
         print(f"  session_prefix  : {spec['session_prefix']}")
         print(f"  overrides       : {json.dumps(spec['overrides'], ensure_ascii=True)}")
         print(f"  command         : {shlex.join(command)}")
+
+        completed_match = None
+        if config.skip_completed:
+            completed_match = find_completed_match(
+                spec_payload=spec["payload"],
+                completed_runs=completed_runs,
+            )
+            if completed_match is not None:
+                skipped += 1
+                print("  status          : skip existing completed run")
+                print(f"  completed dir   : {completed_match}")
+                continue
 
         if dry_run:
             continue
@@ -523,14 +645,20 @@ def run_batch(
                 f"  - {failure['scenario_name']}: exit code {failure['returncode']}",
                 file=sys.stderr,
             )
+        if skipped:
+            print(f"Skipped completed runs: {skipped}", file=sys.stderr)
         return 1
 
     if dry_run:
         print("")
+        if skipped:
+            print(f"Skipped {skipped} existing completed runs.")
         print("Dry run complete. No harness runs were launched.")
         return 0
 
     print("")
+    if skipped:
+        print(f"Skipped {skipped} existing completed runs.")
     print("All requested batch runs finished successfully.")
     return 0
 

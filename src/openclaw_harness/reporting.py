@@ -25,6 +25,16 @@ LATENCY_FIELDS = [
     "send_status",
     "wait_status",
     "history_messages",
+    "usage_session_id",
+    "usage_timestamp",
+    "usage_match_mode",
+    "usage_provider",
+    "input_tokens",
+    "output_tokens",
+    "total_tokens",
+    "output_tokens_session_delta",
+    "output_tps_request",
+    "output_tps_session_delta",
     "started_at",
     "finished_at",
     "error",
@@ -46,6 +56,12 @@ def build_summary(rows: list[dict[str, Any]], *, scenario_name: str) -> dict[str
     send_latency = [float(row["send_latency_ms"]) for row in success_rows]
     wait_latency = [float(row["wait_latency_ms"]) for row in success_rows]
     history_latency = [float(row["history_latency_ms"]) for row in success_rows]
+    input_tokens = _numeric_values(success_rows, "input_tokens")
+    output_tokens = _numeric_values(success_rows, "output_tokens")
+    total_tokens_metric = _numeric_values(success_rows, "total_tokens")
+    output_tokens_session_delta = _numeric_values(success_rows, "output_tokens_session_delta")
+    output_tps_request = _numeric_values(success_rows, "output_tps_request")
+    output_tps_session_delta = _numeric_values(success_rows, "output_tps_session_delta")
     connect_by_worker: dict[tuple[int, int], float] = {}
     for row in rows:
         worker_id = row.get("worker_id")
@@ -80,7 +96,27 @@ def build_summary(rows: list[dict[str, Any]], *, scenario_name: str) -> dict[str
             "history": summarize_ms(history_latency),
             "total": summarize_ms(total_latency),
         },
+        "token_metrics": {
+            "rows_with_usage": sum(1 for row in success_rows if isinstance(row.get("output_tokens"), (int, float))),
+            "rows_with_request_tps": len(output_tps_request),
+            "rows_with_session_delta_tps": len(output_tps_session_delta),
+            "input_tokens": summarize_ms(input_tokens),
+            "output_tokens": summarize_ms(output_tokens),
+            "total_tokens": summarize_ms(total_tokens_metric),
+            "output_tokens_session_delta": summarize_ms(output_tokens_session_delta),
+            "output_tps_request": summarize_ms(output_tps_request),
+            "output_tps_session_delta": summarize_ms(output_tps_session_delta),
+        },
     }
+
+
+def _numeric_values(rows: list[dict[str, Any]], field: str) -> list[float]:
+    values: list[float] = []
+    for row in rows:
+        value = row.get(field)
+        if isinstance(value, (int, float)):
+            values.append(float(value))
+    return values
 
 
 def write_summary(path: Path, payload: dict[str, Any]) -> None:

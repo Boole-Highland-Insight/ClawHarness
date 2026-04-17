@@ -988,6 +988,332 @@ def load_actual_request_timeline_points(csv_path: Path) -> list[tuple[float, flo
     ]
 
 
+def load_request_activity_events(csv_path: Path) -> tuple[datetime | None, list[tuple[float, int]]]:
+    rows: list[tuple[datetime, datetime]] = []
+    with csv_path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            started_at = parse_iso_datetime(row.get("started_at"))
+            if started_at is None:
+                continue
+            finished_at = parse_iso_datetime(row.get("finished_at")) or started_at
+            if finished_at < started_at:
+                finished_at = started_at
+            rows.append((started_at, finished_at))
+
+    if not rows:
+        return (None, [])
+
+    first_request_started_at = min(started_at for started_at, _ in rows)
+    events: list[tuple[float, int]] = []
+    for started_at, finished_at in rows:
+        events.append(((started_at - first_request_started_at).total_seconds(), 1))
+        events.append(((finished_at - first_request_started_at).total_seconds(), -1))
+    events.sort(key=lambda item: (item[0], -item[1]))
+    return (first_request_started_at, events)
+
+
+def load_request_gantt_bars(csv_path: Path) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    with csv_path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            started_at = parse_iso_datetime(row.get("started_at"))
+            if started_at is None:
+                continue
+            finished_at = parse_iso_datetime(row.get("finished_at")) or started_at
+            if finished_at < started_at:
+                finished_at = started_at
+            worker_id = parse_csv_int(row.get("worker_id"))
+            request_index = parse_csv_int(row.get("request_index"))
+            label_parts = []
+            if worker_id is not None:
+                label_parts.append(f"w{worker_id}")
+            if request_index is not None:
+                label_parts.append(f"r{request_index}")
+            rows.append(
+                {
+                    "started_at": started_at,
+                    "finished_at": finished_at,
+                    "label": "-".join(label_parts) if label_parts else f"req-{len(rows)}",
+                }
+            )
+
+    if not rows:
+        return []
+
+    rows.sort(key=lambda row: (row["started_at"], row["finished_at"], row["label"]))
+    origin = rows[0]["started_at"]
+    bars: list[dict[str, Any]] = []
+    for row in rows:
+        start_sec = (row["started_at"] - origin).total_seconds()
+        finish_sec = (row["finished_at"] - origin).total_seconds()
+        bars.append(
+            {
+                "label": row["label"],
+                "start_sec": float(start_sec),
+                "finish_sec": float(finish_sec),
+                "duration_sec": float(max(0.0, finish_sec - start_sec)),
+            }
+        )
+    return bars
+
+
+def plot_request_gantt_multi(
+    *,
+    run_specs: list[dict[str, Any]],
+    title: str,
+    output_path: Path,
+) -> None:
+    if plt is None:
+        raise RuntimeError("matplotlib is required to render figures")
+
+    colors = ["#e15759", "#4e79a7", "#59a14f", "#f28e2b", "#b07aa1", "#76b7b2"]
+    loaded_specs: list[dict[str, Any]] = []
+    global_max_finish = 0.0
+
+    for spec in run_specs:
+        bars = load_request_gantt_bars(Path(spec["csv_path"]))
+        if not bars:
+            continue
+        run_finish_sec = max(bar["finish_sec"] for bar in bars)
+        global_max_finish = max(global_max_finish, run_finish_sec)
+        loaded_specs.append(
+            {
+                "label": str(spec["label"]),
+                "bars": bars,
+                "run_finish_sec": run_finish_sec,
+            }
+        )
+
+    if not loaded_specs:
+        return
+
+    fig, axes = plt.subplots(
+        len(loaded_specs),
+        1,
+        sharex=True,
+        figsize=(14, max(4.0, 2.6 * len(loaded_specs))),
+        constrained_layout=True,
+    )
+    if len(loaded_specs) == 1:
+        axes = [axes]
+
+    for index, (ax, spec) in enumerate(zip(axes, loaded_specs)):
+        color = colors[index % len(colors)]
+        bars = spec["bars"]
+        y_positions = list(range(len(bars)))
+        ax.barh(
+            y_positions,
+            [bar["duration_sec"] for bar in bars],
+            left=[bar["start_sec"] for bar in bars],
+            height=0.72,
+            color=color,
+            edgecolor=color,
+            alpha=0.35,
+        )
+        ax.axvline(spec["run_finish_sec"], color=color, linestyle="--", linewidth=1.2, alpha=0.9)
+        ax.set_title(f"{spec['label']} (run finish {spec['run_finish_sec']:.1f}s)")
+        ax.set_ylabel("request")
+        ax.set_yticks(y_positions)
+        ax.set_yticklabels([str(bar["label"]) for bar in bars], fontsize=8)
+        ax.invert_yaxis()
+        ax.grid(True, axis="x", alpha=0.2)
+
+    axis_max = global_max_finish * 1.05 if global_max_finish > 0 else 1.0
+    for ax in axes:
+        ax.set_xlim(0.0, axis_max)
+    axes[-1].set_xlabel("Elapsed time since first request start in that run (s)")
+    fig.suptitle(title)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+
+
+def collect_npu_parsed_csv_paths(run_dir: Path) -> list[Path]:
+    direct_path = run_dir / "npu_smi.parsed.csv"
+    paths: list[Path] = []
+    if direct_path.exists():
+        paths.append(direct_path)
+    for path in sorted(run_dir.rglob("npu_smi.parsed.csv")):
+        if path not in paths:
+            paths.append(path)
+    return paths
+
+
+def load_npu_metric_points_aligned(
+    *,
+    run_dir: Path,
+    anchor_time: datetime,
+    metric_field: str,
+) -> list[tuple[float, float]]:
+    buckets: dict[datetime, list[float]] = {}
+    for csv_path in collect_npu_parsed_csv_paths(run_dir):
+        with csv_path.open("r", encoding="utf-8", newline="") as handle:
+            reader = csv.DictReader(handle)
+            for row in reader:
+                timestamp = parse_iso_datetime(row.get("timestamp"))
+                value = parse_csv_float(row.get(metric_field))
+                if timestamp is None or value is None:
+                    continue
+                buckets.setdefault(timestamp, []).append(value)
+
+    if not buckets:
+        return []
+
+    return [
+        ((timestamp - anchor_time).total_seconds(), sum(values) / len(values))
+        for timestamp, values in sorted(buckets.items(), key=lambda item: item[0])
+        if values
+    ]
+
+
+def build_activity_step_series(
+    *,
+    events: list[tuple[float, int]],
+    min_t: float,
+    max_t: float,
+) -> tuple[list[tuple[float, float]], list[tuple[float, float]]]:
+    grouped_events: list[tuple[float, int]] = []
+    for event_t, delta in events:
+        if grouped_events and math.isclose(grouped_events[-1][0], event_t, abs_tol=1e-9):
+            grouped_events[-1] = (grouped_events[-1][0], grouped_events[-1][1] + delta)
+        else:
+            grouped_events.append((event_t, delta))
+
+    current = 0
+    for event_t, delta in grouped_events:
+        if event_t < min_t:
+            current += delta
+        else:
+            break
+
+    step_points: list[tuple[float, float]] = [(min_t, float(current))]
+    idle_spans: list[tuple[float, float]] = []
+    cursor = min_t
+
+    for event_t, delta in grouped_events:
+        if event_t < min_t:
+            continue
+        if event_t > max_t:
+            break
+        if event_t > cursor and current == 0:
+            idle_spans.append((cursor, event_t))
+        if not math.isclose(event_t, step_points[-1][0], abs_tol=1e-9):
+            step_points.append((event_t, float(current)))
+        current += delta
+        step_points.append((event_t, float(current)))
+        cursor = event_t
+
+    if max_t > cursor and current == 0:
+        idle_spans.append((cursor, max_t))
+    if not math.isclose(step_points[-1][0], max_t, abs_tol=1e-9):
+        step_points.append((max_t, float(current)))
+    return (step_points, idle_spans)
+
+
+def plot_request_aligned_npu_activity(
+    *,
+    run_specs: list[dict[str, Any]],
+    title: str,
+    output_path: Path,
+    metric_field: str = "aicore_usage_rate_pct",
+    metric_label: str = "AICore Usage Rate (Avg Across Collected Chips)",
+) -> None:
+    if plt is None:
+        raise RuntimeError("matplotlib is required to render figures")
+
+    rendered_specs: list[dict[str, Any]] = []
+    for spec in run_specs:
+        csv_path = Path(spec["csv_path"])
+        run_dir = Path(spec["run_dir"])
+        anchor_time, events = load_request_activity_events(csv_path)
+        if anchor_time is None:
+            continue
+        npu_points = load_npu_metric_points_aligned(
+            run_dir=run_dir,
+            anchor_time=anchor_time,
+            metric_field=metric_field,
+        )
+        if not npu_points:
+            continue
+        request_max_t = max((event_t for event_t, delta in events if delta < 0), default=0.0)
+        npu_min_t = min(t_sec for t_sec, _ in npu_points)
+        npu_max_t = max(t_sec for t_sec, _ in npu_points)
+        min_t = min(npu_min_t, 0.0)
+        max_t = max(npu_max_t, request_max_t)
+        activity_points, idle_spans = build_activity_step_series(events=events, min_t=min_t, max_t=max_t)
+        rendered_specs.append(
+            {
+                "label": str(spec["label"]),
+                "npu_points": npu_points,
+                "activity_points": activity_points,
+                "idle_spans": idle_spans,
+            }
+        )
+
+    if not rendered_specs:
+        return
+
+    fig, axes = plt.subplots(
+        len(rendered_specs),
+        1,
+        sharex=True,
+        figsize=(14, max(4.5, 3.6 * len(rendered_specs))),
+        constrained_layout=True,
+    )
+    if len(rendered_specs) == 1:
+        axes = [axes]
+
+    for ax, spec in zip(axes, rendered_specs):
+        ax2 = ax.twinx()
+        idle_label_used = False
+        for idle_start, idle_end in spec["idle_spans"]:
+            if idle_end <= idle_start:
+                continue
+            ax.axvspan(
+                idle_start,
+                idle_end,
+                color="#d9d9d9",
+                alpha=0.25,
+                label="Idle Window (0 Active Requests)" if not idle_label_used else None,
+            )
+            idle_label_used = True
+        ax.plot(
+            [t_sec for t_sec, _ in spec["npu_points"]],
+            [value for _, value in spec["npu_points"]],
+            color="#d1495b",
+            linewidth=1.6,
+            marker="o",
+            markersize=2.4,
+            label=metric_label,
+        )
+        ax2.plot(
+            [t_sec for t_sec, _ in spec["activity_points"]],
+            [value for _, value in spec["activity_points"]],
+            color="#2c7fb8",
+            linewidth=1.4,
+            linestyle="--",
+            label="Active Requests",
+        )
+        ax.axvline(0.0, color="#555555", linewidth=1.0, linestyle=":", alpha=0.8)
+        ax.set_ylabel("AICore %")
+        ax.set_ylim(bottom=0)
+        ax2.set_ylabel("Active Requests")
+        ax2.set_ylim(bottom=0)
+        ax.set_title(str(spec["label"]))
+        ax.grid(True, alpha=0.25)
+        handles_left, labels_left = ax.get_legend_handles_labels()
+        handles_right, labels_right = ax2.get_legend_handles_labels()
+        ax.legend(handles_left + handles_right, labels_left + labels_right, loc="upper right")
+
+    axes[-1].set_xlabel("Elapsed time since first request start (s); negative = pre-request sampling")
+    fig.suptitle(title)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+
+
 def compute_run_timing_metrics(summary: dict[str, Any], csv_path: Path) -> dict[str, Any]:
     run_started_at = parse_iso_datetime(summary.get("started_at"))
     run_finished_at = parse_iso_datetime(summary.get("finished_at"))
@@ -1418,15 +1744,33 @@ def build_pair_outputs(
             run_specs=[
                 {
                     "label": left_name,
+                    "run_dir": left_run_dir,
                     "csv_path": left_run_dir / "latency.csv",
                 },
                 {
                     "label": right_name,
+                    "run_dir": right_run_dir,
                     "csv_path": right_run_dir / "latency.csv",
                 },
             ],
             title="Actual Request Timeline (Wall Clock, Total + First Connect)",
             output_path=pair_dir / "figures" / "actual_request_timeline.png",
+        )
+        plot_request_aligned_npu_activity(
+            run_specs=[
+                {
+                    "label": left_name,
+                    "run_dir": left_run_dir,
+                    "csv_path": left_run_dir / "latency.csv",
+                },
+                {
+                    "label": right_name,
+                    "run_dir": right_run_dir,
+                    "csv_path": right_run_dir / "latency.csv",
+                },
+            ],
+            title="AICore Usage vs Request Activity",
+            output_path=pair_dir / "figures" / "aicore_request_alignment.png",
         )
         plot_time_series_panels(
             panel_specs=[
@@ -1727,6 +2071,7 @@ def build_pair_outputs(
         ("Container CPU and Memory", pair_dir / "figures" / "container_cpu_mem.png"),
         ("Latency Timeline", pair_dir / "figures" / "latency_timeline.png"),
         ("Actual Request Timeline", pair_dir / "figures" / "actual_request_timeline.png"),
+        ("AICore vs Request Activity", pair_dir / "figures" / "aicore_request_alignment.png"),
         ("CPU Load Timeline", pair_dir / "figures" / "cpu_load_timeline.png"),
         ("Memory Load Timeline", pair_dir / "figures" / "mem_load_timeline.png"),
         ("I/O Load Timeline", pair_dir / "figures" / "io_load_timeline.png"),

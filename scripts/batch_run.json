@@ -1,12 +1,13 @@
 {
   "template_scenario": "scenarios/vllm/vps_docker_single_light.json",
-  "basename": "vps-docker-qwen3-32b8x2",
-  "output_root": "out/batch_run_1",
+  "basename": "vps-docker-qwen3-235b8x2",
+  "output_root": "out/batch_run_4",
   "generated_root": ".state/generated_scenarios/batch_harness",
   "python_bin": "python3",
   "run_tag": "",
   "keep_runtime": false,
   "continue_on_error": false,
+  "skip_completed": false,
   "dry_run": false,
   "base_overrides": {
     "client.message": ""
@@ -84,12 +85,21 @@
       }
     },
     {
-      "key": "multi-inst-5x2ix2w",
+      "key": "multi-inst-5x2ix2w-stag300",
       "overrides": {
         "runtime.instance_num": 2,
         "load.concurrency": 2,
         "load.requests_per_worker": 5,
-        "load.worker_stagger_ms": 0
+        "load.worker_stagger_ms": 300
+      }
+    },
+    {
+      "key": "multi-inst-5x2ix2w-stag500",
+      "overrides": {
+        "runtime.instance_num": 2,
+        "load.concurrency": 2,
+        "load.requests_per_worker": 5,
+        "load.worker_stagger_ms": 500
       }
     }
   ]

@@ -138,12 +138,15 @@ class NpuSmiCollector(BaseCollector):
         *,
         enabled: bool,
         interval_sec: int,
+        auto_discover: bool,
         card_ids: list[int],
         output_dir: Path,
     ) -> None:
         super().__init__("npu_smi", enabled)
         self.interval_seconds = max(1, int(interval_sec))
+        self.auto_discover = auto_discover
         self.card_ids = [int(card_id) for card_id in card_ids]
+        self._resolved_card_ids: list[int] = []
         self.output_path = output_dir / "npu_smi.log"
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
@@ -153,16 +156,24 @@ class NpuSmiCollector(BaseCollector):
             self.status.status = "skipped"
             self.status.detail = "disabled in scenario"
             return
-        if not self.card_ids:
-            self.status.status = "skipped"
-            self.status.detail = "card_ids is empty"
-            return
         if not command_exists("npu-smi"):
             self.status.status = "skipped"
             self.status.detail = "npu-smi is not installed"
             return
+        self._resolved_card_ids = list(self.card_ids)
+        if not self._resolved_card_ids and self.auto_discover:
+            self._resolved_card_ids = _discover_npu_ids()
+        if not self._resolved_card_ids:
+            self.status.status = "skipped"
+            self.status.detail = (
+                "card_ids is empty and auto_discover is disabled"
+                if not self.auto_discover
+                else "no NPU devices discovered"
+            )
+            return
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
         self.status.files.append(str(self.output_path))
+        self.status.detail = f"monitoring NPU cards: {', '.join(str(card_id) for card_id in self._resolved_card_ids)}"
         self.status.status = "started"
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
@@ -179,7 +190,7 @@ class NpuSmiCollector(BaseCollector):
         with self.output_path.open("w", encoding="utf-8") as handle:
             while not self._stop_event.is_set():
                 handle.write(f"{iso_now()}\n")
-                for card_id in self.card_ids:
+                for card_id in self._resolved_card_ids:
                     handle.write(f"Requested NPU Index:{card_id}\n")
                     sample = run_command(
                         ["npu-smi", "info", "-t", "usages", "-i", str(card_id)],
@@ -268,6 +279,32 @@ class PassiveArtifactCollector(BaseCollector):
             self.status.detail = self.disabled_detail or "disabled in scenario"
             return
         self.status.status = "completed"
+
+
+def _discover_npu_ids() -> list[int]:
+    candidates: list[int] = []
+    seen: set[int] = set()
+    for command in (["npu-smi", "info", "-l"], ["npu-smi", "info"]):
+        sample = run_command(command, check=False)
+        output = sample.stdout or sample.stderr or ""
+        for raw_line in output.splitlines():
+            line = raw_line.strip()
+            if not line.startswith("NPU ID"):
+                continue
+            parts = line.split(":", 1)
+            if len(parts) != 2:
+                continue
+            try:
+                card_id = int(parts[1].strip())
+            except ValueError:
+                continue
+            if card_id in seen:
+                continue
+            seen.add(card_id)
+            candidates.append(card_id)
+        if candidates:
+            break
+    return candidates
 
 
 def build_collectors(
@@ -404,6 +441,7 @@ def build_collectors(
         NpuSmiCollector(
             enabled=config.npu_smi.enabled,
             interval_sec=config.npu_smi.interval_sec,
+            auto_discover=config.npu_smi.auto_discover,
             card_ids=config.npu_smi.card_ids,
             output_dir=output_dir,
         ),

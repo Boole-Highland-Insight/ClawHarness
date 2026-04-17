@@ -1570,6 +1570,237 @@ def parse_npu_smi_log(path: Path, *, output_dir: Path) -> ParsedArtifact | None:
     return ParsedArtifact(name="npu_smi", files=[str(parsed_path), str(summary_path)], summary=summary)
 
 
+def parse_session_usage_artifacts(
+    *,
+    output_dir: Path,
+    rows: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    sessions_dir = output_dir / "runtime" / "config" / "agents" / "main" / "sessions"
+    sessions_index_path = sessions_dir / "sessions.json"
+    if not sessions_index_path.exists() or not rows:
+        return None
+
+    try:
+        sessions_index = json.loads(sessions_index_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(sessions_index, dict):
+        return None
+
+    rows_by_session_key: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        session_key = row.get("session_key")
+        if isinstance(session_key, str) and session_key:
+            rows_by_session_key.setdefault(session_key, []).append(row)
+    if not rows_by_session_key:
+        return None
+
+    events_by_session_key: dict[str, list[dict[str, Any]]] = {}
+    assistant_messages = 0
+    for indexed_session_key, session_meta in sessions_index.items():
+        if not isinstance(indexed_session_key, str) or not indexed_session_key:
+            continue
+        session_key = indexed_session_key.split(":", 2)[-1]
+        if session_key not in rows_by_session_key:
+            continue
+        if not isinstance(session_meta, dict):
+            continue
+        session_id = session_meta.get("sessionId")
+        session_file = session_meta.get("sessionFile")
+        session_path = sessions_dir / f"{session_id}.jsonl"
+        if isinstance(session_file, str):
+            candidate = Path(session_file)
+            if candidate.name:
+                session_path = sessions_dir / candidate.name
+        if not session_path.exists():
+            continue
+        events = _parse_session_usage_events(session_path=session_path, session_id=str(session_id or ""))
+        if not events:
+            continue
+        assistant_messages += len(events)
+        events_by_session_key[session_key] = events
+
+    if not events_by_session_key:
+        return None
+
+    matched_rows = 0
+    matched_by_run_id = 0
+    matched_by_order = 0
+    rows_with_usage = 0
+    rows_with_request_tps = 0
+    rows_with_session_delta_tps = 0
+
+    for session_key, session_rows in rows_by_session_key.items():
+        events = events_by_session_key.get(session_key)
+        if not events:
+            continue
+        session_rows.sort(key=_row_sort_key)
+        events_by_run_id = {
+            str(event["run_id"]): event
+            for event in events
+            if isinstance(event.get("run_id"), str) and event.get("run_id")
+        }
+        next_event_index = 0
+        previous_output_tokens: float | None = None
+        for row in session_rows:
+            event = None
+            match_mode = ""
+            run_id = row.get("run_id")
+            if isinstance(run_id, str) and run_id:
+                event = events_by_run_id.pop(run_id, None)
+                if event is not None:
+                    match_mode = "run_id"
+            if event is None:
+                while next_event_index < len(events) and events[next_event_index].get("_matched"):
+                    next_event_index += 1
+                if next_event_index < len(events):
+                    event = events[next_event_index]
+                    next_event_index += 1
+                    match_mode = "order"
+            if event is None:
+                continue
+            event["_matched"] = True
+            matched_rows += 1
+            if match_mode == "run_id":
+                matched_by_run_id += 1
+            else:
+                matched_by_order += 1
+            usage = event.get("usage") if isinstance(event.get("usage"), dict) else {}
+            input_tokens = _coerce_usage_number(usage.get("input"))
+            output_tokens = _coerce_usage_number(usage.get("output"))
+            total_tokens = _coerce_usage_number(usage.get("totalTokens"))
+            session_delta_output_tokens = _derive_session_delta_output_tokens(
+                output_tokens=output_tokens,
+                previous_output_tokens=previous_output_tokens,
+            )
+            if output_tokens is not None:
+                previous_output_tokens = output_tokens
+            wait_latency_ms = row.get("wait_latency_ms")
+            wait_latency_sec = (
+                float(wait_latency_ms) / 1000.0
+                if isinstance(wait_latency_ms, (int, float)) and float(wait_latency_ms) > 0.0
+                else None
+            )
+            output_tps_request = (
+                output_tokens / wait_latency_sec
+                if output_tokens is not None and wait_latency_sec is not None
+                else None
+            )
+            output_tps_session_delta = (
+                session_delta_output_tokens / wait_latency_sec
+                if session_delta_output_tokens is not None and wait_latency_sec is not None
+                else None
+            )
+            row["usage_session_id"] = event.get("session_id", "")
+            row["usage_timestamp"] = event.get("timestamp", "")
+            row["usage_match_mode"] = match_mode
+            row["usage_provider"] = event.get("provider", "")
+            row["input_tokens"] = input_tokens
+            row["output_tokens"] = output_tokens
+            row["total_tokens"] = total_tokens
+            row["output_tokens_session_delta"] = session_delta_output_tokens
+            row["output_tps_request"] = round(output_tps_request, 6) if output_tps_request is not None else None
+            row["output_tps_session_delta"] = (
+                round(output_tps_session_delta, 6) if output_tps_session_delta is not None else None
+            )
+            if output_tokens is not None:
+                rows_with_usage += 1
+            if output_tps_request is not None:
+                rows_with_request_tps += 1
+            if output_tps_session_delta is not None:
+                rows_with_session_delta_tps += 1
+
+    return {
+        "sessions_index": str(sessions_index_path),
+        "session_files": len(events_by_session_key),
+        "assistant_messages": assistant_messages,
+        "matched_rows": matched_rows,
+        "matched_by_run_id": matched_by_run_id,
+        "matched_by_order": matched_by_order,
+        "rows_with_usage": rows_with_usage,
+        "rows_with_request_tps": rows_with_request_tps,
+        "rows_with_session_delta_tps": rows_with_session_delta_tps,
+    }
+
+
+def _parse_session_usage_events(*, session_path: Path, session_id: str) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    pending_event_index: int | None = None
+    for raw_line in session_path.read_text(encoding="utf-8", errors="replace").splitlines():
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        try:
+            payload = json.loads(stripped)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        if payload.get("type") == "message":
+            message = payload.get("message")
+            if not isinstance(message, dict):
+                continue
+            if message.get("role") != "assistant":
+                continue
+            usage = message.get("usage")
+            if not isinstance(usage, dict):
+                continue
+            event = {
+                "session_id": session_id,
+                "timestamp": str(payload.get("timestamp", "")),
+                "provider": str(message.get("provider", "")),
+                "usage": usage,
+                "run_id": None,
+                "_matched": False,
+            }
+            events.append(event)
+            pending_event_index = len(events) - 1
+            continue
+        if payload.get("type") == "custom" and payload.get("customType") == "openclaw:bootstrap-context:full":
+            data = payload.get("data")
+            if not isinstance(data, dict):
+                continue
+            run_id = data.get("runId")
+            if not isinstance(run_id, str) or not run_id:
+                continue
+            if pending_event_index is not None and 0 <= pending_event_index < len(events):
+                if not events[pending_event_index].get("run_id"):
+                    events[pending_event_index]["run_id"] = run_id
+                    pending_event_index = None
+    return events
+
+
+def _row_sort_key(row: dict[str, Any]) -> tuple[str, int, str]:
+    started_at = row.get("started_at")
+    request_index = row.get("request_index")
+    run_id = row.get("run_id")
+    return (
+        str(started_at or ""),
+        int(request_index) if isinstance(request_index, int) else -1,
+        str(run_id or ""),
+    )
+
+
+def _coerce_usage_number(value: Any) -> float | None:
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
+def _derive_session_delta_output_tokens(
+    *,
+    output_tokens: float | None,
+    previous_output_tokens: float | None,
+) -> float | None:
+    if output_tokens is None:
+        return None
+    if previous_output_tokens is None:
+        return output_tokens
+    if output_tokens >= previous_output_tokens:
+        return output_tokens - previous_output_tokens
+    return output_tokens
+
+
 def derive_healthcheck_url(ws_url: str) -> str:
     parts = urlsplit(ws_url)
     if parts.scheme not in {"ws", "wss"}:

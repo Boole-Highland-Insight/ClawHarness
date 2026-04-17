@@ -15,7 +15,7 @@ from .collectors import build_collectors
 from .device_identity import load_or_create_device_identity
 from .environment import probe_environment, summarize_environment
 from .gateway_client import GatewayClient
-from .parsers import parse_collector_artifacts
+from .parsers import parse_collector_artifacts, parse_session_usage_artifacts
 from .reporting import build_summary, write_latency_csv, write_summary
 from .runtime import create_runtime_manager
 from .scenario import ScenarioConfig
@@ -430,6 +430,9 @@ def finalize_instance(
         output_dir=context.output_dir,
         collectors=context.collectors,
     )
+    session_usage_summary = parse_session_usage_artifacts(output_dir=context.output_dir, rows=context.rows)
+    if session_usage_summary is not None:
+        context.collector_analysis["session_usage"] = session_usage_summary
     write_latency_csv(context.output_dir / "latency.csv", context.rows)
     summary = build_summary(context.rows, scenario_name=scenario.name)
     summary["instance_index"] = context.instance_index
