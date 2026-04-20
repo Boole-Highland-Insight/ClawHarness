@@ -22,6 +22,8 @@
     "openclaw_config": {
       "agents": {
         "defaults": {
+          "thinkingDefault": "off",
+          "reasoningDefault": "off",
           "model": {
             "primary": "vllm/qwen3-32b"
           },
