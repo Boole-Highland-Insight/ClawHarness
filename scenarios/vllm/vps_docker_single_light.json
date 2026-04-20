@@ -23,7 +23,6 @@
       "agents": {
         "defaults": {
           "thinkingDefault": "off",
-          "reasoningDefault": "off",
           "model": {
             "primary": "vllm/qwen3-235b"
           },

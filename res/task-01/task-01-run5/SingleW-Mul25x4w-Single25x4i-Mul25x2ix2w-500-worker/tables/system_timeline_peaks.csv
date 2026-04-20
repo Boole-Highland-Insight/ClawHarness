@@ -1,0 +1,5 @@
+scenario,benchmark_cpu_peak,benchmark_cpu_peak_t_sec,benchmark_rss_peak_kib,benchmark_rss_peak_t_sec,system_disk_pct_util_peak,system_disk_pct_util_peak_t_sec,system_disk_w_await_peak,system_disk_w_await_peak_t_sec,system_interrupts_peak,system_interrupts_peak_t_sec,system_context_switches_peak,system_context_switches_peak_t_sec,system_run_queue_peak,system_run_queue_peak_t_sec,npu_utilization_peak,npu_utilization_peak_t_sec,npu_aicore_peak,npu_aicore_peak_t_sec,npu_hbm_peak,npu_hbm_peak_t_sec
+single-w,187.0,93.0,918832.0,21.0,19.6,35.0,2.12,559.0,1152746.0,82.0,1786788.0,82.0,105.0,877.0,94.0625,704.451031,34.875,966.791425,94.0,0.0
+multi-25x4w-stag500,168.0,129.0,952960.0,229.0,10.8,54.0,5.23,3.0,1053689.0,432.0,1654277.0,432.0,72.0,157.0,96.375,375.020043,53.125,121.325566,95.0,0.0
+multi-inst-25x4i,469.0,2.0,3358476.0,15.0,5.6,8.0,3.8525,8.0,1020849.75,382.0,1582224.75,382.0,60.0,398.0,96.9375,142.388737,53.375,122.866955,95.0,0.0
+multi-inst-25x2ix2w-500,312.0,41.0,1915264.0,24.0,7.2,61.0,3.29,31.0,976120.5,470.0,1533704.0,497.0,66.5,86.0,97.125,303.26668,52.8125,123.12935,95.5,102.799127

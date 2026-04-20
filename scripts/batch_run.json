@@ -1,13 +1,13 @@
 {
   "template_scenario": "scenarios/vllm/vps_docker_single_light.json",
-  "basename": "vps-docker-qwen3-235b8x2",
-  "output_root": "out/batch_run_4",
+  "basename": "vps-docker-qwen3-235b",
+  "output_root": "out/batch_run_5",
   "generated_root": ".state/generated_scenarios/batch_harness",
   "python_bin": "python3",
   "run_tag": "",
   "keep_runtime": false,
   "continue_on_error": false,
-  "skip_completed": false,
+  "skip_completed": true,
   "dry_run": false,
   "base_overrides": {
     "client.message": ""
@@ -40,65 +40,134 @@
   ],
   "run_variants": [
     {
-      "key": "single-20",
+      "key": "single-100",
       "overrides": {
         "runtime.instance_num": 1,
         "load.concurrency": 1,
-        "load.requests_per_worker": 20,
+        "load.requests_per_worker": 100,
         "load.worker_stagger_ms": 0
       }
     },
     {
-      "key": "multi-5x4w-stag150",
+      "key": "multi-25x4w-stag150",
       "overrides": {
         "runtime.instance_num": 1,
         "load.concurrency": 4,
-        "load.requests_per_worker": 5,
+        "load.requests_per_worker": 25,
         "load.worker_stagger_ms": 150
       }
     },
     {
-      "key": "multi-5x4w-stag300",
+      "key": "multi-25x4w-stag300",
       "overrides": {
         "runtime.instance_num": 1,
         "load.concurrency": 4,
-        "load.requests_per_worker": 5,
+        "load.requests_per_worker": 25,
         "load.worker_stagger_ms": 300
       }
     },
     {
-      "key": "multi-5x4w-stag500",
+      "key": "multi-25x4w-stag500",
       "overrides": {
         "runtime.instance_num": 1,
         "load.concurrency": 4,
-        "load.requests_per_worker": 5,
+        "load.requests_per_worker": 25,
         "load.worker_stagger_ms": 500
       }
     },
     {
-      "key": "single-inst-5x4i",
+      "key": "single-inst-25x4i",
       "overrides": {
         "runtime.instance_num": 4,
         "load.concurrency": 1,
-        "load.requests_per_worker": 5,
+        "load.requests_per_worker": 25,
         "load.worker_stagger_ms": 0
       }
     },
     {
-      "key": "multi-inst-5x2ix2w-stag300",
+      "key": "multi-inst-25x2ix2w-stag150",
       "overrides": {
         "runtime.instance_num": 2,
         "load.concurrency": 2,
-        "load.requests_per_worker": 5,
+        "load.requests_per_worker": 25,
+        "load.worker_stagger_ms": 150
+      }
+    },
+    {
+      "key": "multi-inst-25x2ix2w-stag300",
+      "overrides": {
+        "runtime.instance_num": 2,
+        "load.concurrency": 2,
+        "load.requests_per_worker": 25,
         "load.worker_stagger_ms": 300
       }
     },
     {
-      "key": "multi-inst-5x2ix2w-stag500",
+      "key": "multi-inst-25x2ix2w-stag500",
       "overrides": {
         "runtime.instance_num": 2,
         "load.concurrency": 2,
-        "load.requests_per_worker": 5,
+        "load.requests_per_worker": 25,
+        "load.worker_stagger_ms": 500
+      }
+    },
+    {
+      "key": "multi-inst-25x2dx2ix1w-stag150",
+      "overrides": {
+        "runtime.instance_num": 2,
+        "runtime.openclaw_num_per_instance": 2,
+        "load.concurrency": 2,
+        "load.requests_per_worker": 25,
+        "load.worker_stagger_ms": 150
+      }
+    },
+    {
+      "key": "multi-inst-25x2dx2ix1w-stag300",
+      "overrides": {
+        "runtime.instance_num": 2,
+        "runtime.openclaw_num_per_instance": 2,
+        "load.concurrency": 2,
+        "load.requests_per_worker": 25,
+        "load.worker_stagger_ms": 300
+      }
+    },
+    {
+      "key": "multi-inst-25x2dx2ix1w-stag500",
+      "overrides": {
+        "runtime.instance_num": 2,
+        "runtime.openclaw_num_per_instance": 2,
+        "load.concurrency": 2,
+        "load.requests_per_worker": 25,
+        "load.worker_stagger_ms": 500
+      }
+    },
+    {
+      "key": "multi-inst-25x1dx4ix1w-stag150",
+      "overrides": {
+        "runtime.instance_num": 1,
+        "runtime.openclaw_num_per_instance": 4,
+        "load.concurrency": 4,
+        "load.requests_per_worker": 25,
+        "load.worker_stagger_ms": 150
+      }
+    },
+    {
+      "key": "multi-inst-25x1dx4ix1w-stag300",
+      "overrides": {
+        "runtime.instance_num": 1,
+        "runtime.openclaw_num_per_instance": 4,
+        "load.concurrency": 4,
+        "load.requests_per_worker": 25,
+        "load.worker_stagger_ms": 300
+      }
+    },
+    {
+      "key": "multi-inst-25x1dx4ix1w-stag500",
+      "overrides": {
+        "runtime.instance_num": 1,
+        "runtime.openclaw_num_per_instance": 4,
+        "load.concurrency": 4,
+        "load.requests_per_worker": 25,
         "load.worker_stagger_ms": 500
       }
     }

@@ -10,6 +10,7 @@ from .utils import summarize_ms, write_json
 LATENCY_FIELDS = [
     "scenario",
     "instance_index",
+    "openclaw_index",
     "task_id",
     "task_name",
     "worker_id",
@@ -25,6 +26,7 @@ LATENCY_FIELDS = [
     "send_status",
     "wait_status",
     "history_messages",
+    "gateway_url",
     "usage_session_id",
     "usage_timestamp",
     "usage_match_mode",

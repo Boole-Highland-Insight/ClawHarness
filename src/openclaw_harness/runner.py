@@ -54,7 +54,7 @@ class InstanceRunContext:
 
 async def execute_load(
     scenario: ScenarioConfig,
-    url: str,
+    urls: list[str],
     token: str,
     *,
     device_identity,
@@ -67,11 +67,16 @@ async def execute_load(
     async def worker(worker_id: int) -> None:
         if scenario.load.worker_stagger_ms > 0:
             await asyncio.sleep((scenario.load.worker_stagger_ms * worker_id) / 1000.0)
+        openclaw_index = worker_id % len(urls)
+        url = urls[openclaw_index]
         client = GatewayClient(
             url=url,
             token=token,
             role=scenario.client.role,
-            instance_id=f"{slugify(scenario.name)}-i{instance_index:02d}-{worker_id}-{uuid4().hex[:8]}",
+            instance_id=(
+                f"{slugify(scenario.name)}-i{instance_index:02d}-oc{openclaw_index:02d}-"
+                f"{worker_id}-{uuid4().hex[:8]}"
+            ),
             device_identity=device_identity,
         )
         connect_latency_ms = 0.0
@@ -136,6 +141,7 @@ async def execute_load(
                     {
                         "scenario": scenario.name,
                         "instance_index": instance_index,
+                        "openclaw_index": openclaw_index,
                         "task_id": scenario.client.task_id,
                         "task_name": scenario.client.task_name,
                         "worker_id": worker_id,
@@ -151,6 +157,7 @@ async def execute_load(
                         "send_status": send_status,
                         "wait_status": wait_status,
                         "history_messages": history_messages,
+                        "gateway_url": url,
                         "started_at": started_at,
                         "finished_at": finished_at,
                         "error": error_text,
@@ -192,7 +199,8 @@ def build_instance_runtime_config(
     config = copy.deepcopy(scenario.runtime)
     config.instance_num = 1
     if scenario.runtime.instance_num > 1:
-        port_stride = 10 if scenario.runtime.network_mode == "host" else 1
+        openclaw_port_count = max(1, int(scenario.runtime.openclaw_num_per_instance))
+        port_stride = max(10, openclaw_port_count) if scenario.runtime.network_mode == "host" else openclaw_port_count
         config.host_port = scenario.runtime.host_port + (instance_index * port_stride)
         config.force_rebuild = scenario.runtime.force_rebuild and instance_index == 0
     return config
@@ -287,6 +295,7 @@ def build_preflight_payload(
         "checked_at": iso_now(),
         "target": {
             "url": runtime_info.url,
+            "urls": list(getattr(runtime_info, "urls", []) or [runtime_info.url]),
             "healthcheck_url": healthcheck_url,
             "container_name": runtime_info.container_name,
             "container_id": runtime_info.container_id,
@@ -533,7 +542,7 @@ async def run_scenario(
             asyncio.create_task(
                 execute_load(
                     scenario,
-                    context.runtime_info.url,
+                    list(context.runtime_info.urls or [context.runtime_info.url]),
                     context.runtime_info.token,
                     device_identity=device_identity,
                     instance_index=context.instance_index,
@@ -626,6 +635,8 @@ async def run_scenario(
     write_latency_csv(run_dir / "latency.csv", rows)
     summary = build_summary(rows, scenario_name=scenario.name)
     summary["instance_num"] = scenario.runtime.instance_num
+    summary["openclaw_num_per_instance"] = scenario.runtime.openclaw_num_per_instance
+    summary["openclaw_num_total"] = scenario.runtime.instance_num * scenario.runtime.openclaw_num_per_instance
     summary["task"] = {
         "source": "task_file" if scenario.client.task_file else "message",
         "task_file": scenario.client.task_file,

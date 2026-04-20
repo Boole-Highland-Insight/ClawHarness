@@ -4,8 +4,9 @@ import json
 import os
 import re
 import secrets
+import shlex
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 from urllib.error import URLError
@@ -34,6 +35,7 @@ class RuntimeInfo:
     url: str
     token: str
     started_by_harness: bool
+    urls: list[str] = field(default_factory=list)
     container_name: str | None = None
     container_id: str | None = None
     host_pid: int | None = None
@@ -80,7 +82,13 @@ class DockerRuntimeManager:
         self.dockerfile = (self.repo_root / config.dockerfile).resolve()
         self.container_id: str | None = None
         self.resolved_url = ""
+        self.resolved_urls: list[str] = []
         self.resolved_healthcheck_url = ""
+        self.resolved_healthcheck_urls: list[str] = []
+
+    @property
+    def openclaw_count(self) -> int:
+        return max(1, int(self.config.openclaw_num_per_instance))
 
     def start(self) -> RuntimeInfo:
         if self.reusing_existing_container:
@@ -116,12 +124,10 @@ class DockerRuntimeManager:
         if self.config.network_mode == "host":
             docker_args.extend(["--network", "host"])
         else:
-            docker_args.extend(
-                [
-                    "-p",
-                    f"{self.config.host}:{self.config.host_port}:{self.config.container_port}",
-                ],
-            )
+            for host_port, container_port in zip(self._gateway_host_ports(), self._gateway_container_ports()):
+                docker_args.extend(["-p", f"{self.config.host}:{host_port}:{container_port}"])
+        if self.openclaw_count > 1 and "OPENCLAW_SKIP_BROWSER_CONTROL_SERVER" not in self.config.env:
+            docker_args.extend(["-e", "OPENCLAW_SKIP_BROWSER_CONTROL_SERVER=1"])
         for key, value in self.config.env.items():
             docker_args.extend(["-e", f"{key}={value}"])
         if self.node_trace.enabled:
@@ -144,27 +150,30 @@ class DockerRuntimeManager:
             if self.config.network_mode == "host"
             else self.config.container_port
         )
-        docker_args.extend(
-            [
-                self.config.image,
-                "node",
-                "dist/index.js",
-                "gateway",
-                "--allow-unconfigured",
-                "--bind",
-                self.config.gateway_bind,
-                "--port",
-                str(gateway_port),
-            ],
-        )
+        docker_args.append(self.config.image)
+        if self.openclaw_count == 1:
+            docker_args.extend(
+                [
+                    "node",
+                    "dist/index.js",
+                    "gateway",
+                    "--allow-unconfigured",
+                    "--bind",
+                    self.config.gateway_bind,
+                    "--port",
+                    str(gateway_port),
+                ],
+            )
+        else:
+            docker_args.extend(["bash", "-lc", self._build_multi_openclaw_command()])
         started = run_command(docker_args, cwd=self.repo_root)
         self.container_id = started.stdout.strip()
-        self.resolved_url = f"ws://{self.config.host}:{self.config.host_port}"
-        self.resolved_healthcheck_url = (
-            self.config.healthcheck_url.strip()
-            or f"http://{self.config.host}:{self.config.host_port}/healthz"
-        )
-        self._wait_for_health(self.resolved_healthcheck_url)
+        self.resolved_urls = [f"ws://{self.config.host}:{port}" for port in self._gateway_host_ports()]
+        self.resolved_url = self.resolved_urls[0]
+        self.resolved_healthcheck_urls = [f"http://{self.config.host}:{port}/healthz" for port in self._gateway_host_ports()]
+        self.resolved_healthcheck_url = self.resolved_healthcheck_urls[0]
+        for healthcheck_url in self.resolved_healthcheck_urls:
+            self._wait_for_health(healthcheck_url)
         self._write_logs()
         host_pid, host_pid_source = self._inspect_host_pid()
         return RuntimeInfo(
@@ -172,6 +181,7 @@ class DockerRuntimeManager:
             url=self.resolved_url,
             token=self.config.gateway_token,
             started_by_harness=True,
+            urls=list(self.resolved_urls),
             container_name=self.container_name,
             container_id=self.container_id,
             host_pid=host_pid,
@@ -193,7 +203,10 @@ class DockerRuntimeManager:
             "reuse_container_name": self.reuse_container_name or None,
             "reusing_existing_container": self.reusing_existing_container,
             "resolved_url": self.resolved_url or None,
+            "resolved_urls": list(self.resolved_urls),
             "resolved_healthcheck_url": self.resolved_healthcheck_url or None,
+            "resolved_healthcheck_urls": list(self.resolved_healthcheck_urls),
+            "openclaw_num_per_instance": self.openclaw_count,
             "runtime_dir": str(self.runtime_dir),
             "repo_root": str(self.repo_root),
             "dockerfile": str(self.dockerfile),
@@ -206,9 +219,11 @@ class DockerRuntimeManager:
         container = self._inspect_container()
         self.container_id = str(container.get("Id") or "").strip() or None
         self.resolved_url = self.config.ws_url.strip() or self._derive_existing_container_ws_url(container)
+        self.resolved_urls = [self.resolved_url]
         self.resolved_healthcheck_url = (
             self.config.healthcheck_url.strip() or derive_healthcheck_url(self.resolved_url)
         )
+        self.resolved_healthcheck_urls = [self.resolved_healthcheck_url] if self.resolved_healthcheck_url else []
         if self.resolved_healthcheck_url:
             self._wait_for_health(self.resolved_healthcheck_url)
         self._write_logs()
@@ -218,6 +233,7 @@ class DockerRuntimeManager:
             url=self.resolved_url,
             token=self.config.gateway_token,
             started_by_harness=False,
+            urls=list(self.resolved_urls),
             container_name=self.container_name,
             container_id=self.container_id,
             host_pid=host_pid,
@@ -307,6 +323,8 @@ class DockerRuntimeManager:
         )
 
     def _inspect_host_pid(self) -> tuple[int | None, str | None]:
+        if self.openclaw_count > 1:
+            return None, "unsupported:multiple_openclaw_processes"
         init_pid = self._inspect_pid()
         if init_pid is None:
             return None, None
@@ -488,24 +506,34 @@ class DockerRuntimeManager:
         return result.returncode == 0 and result.stdout.strip().lower() == "true"
 
     def _seed_runtime_config(self) -> None:
-        config_path = self.config_dir / "openclaw.json"
-        payload = {
-            "gateway": {
-                "mode": "local",
-                "controlUi": {
-                    "enabled": False,
+        for openclaw_index in range(self.openclaw_count):
+            config_path = self._host_state_dir(openclaw_index) / "openclaw.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            payload = {
+                "gateway": {
+                    "mode": "local",
+                    "controlUi": {
+                        "enabled": False,
+                    },
                 },
-            },
-        }
-        if self.config.openclaw_config:
-            payload = _deep_merge_dict(payload, self.config.openclaw_config)
-        config_path.write_text(f"{json.dumps(payload, indent=2)}\n", encoding="utf-8")
+            }
+            if self.config.openclaw_config:
+                payload = _deep_merge_dict(payload, self.config.openclaw_config)
+            agents = payload.setdefault("agents", {})
+            if not isinstance(agents, dict):
+                agents = {}
+                payload["agents"] = agents
+            defaults = agents.setdefault("defaults", {})
+            if not isinstance(defaults, dict):
+                defaults = {}
+                agents["defaults"] = defaults
+            if not str(defaults.get("workspace", "")).strip():
+                defaults["workspace"] = self._container_workspace_dir(openclaw_index)
+            config_path.write_text(f"{json.dumps(payload, indent=2)}\n", encoding="utf-8")
 
     def _seed_device_pairing(self) -> None:
         if self.device_identity is None:
             return
-        devices_dir = self.config_dir / "devices"
-        devices_dir.mkdir(parents=True, exist_ok=True)
         now_ms = int(time.time() * 1000)
         operator_scopes = ["operator.admin"]
         paired_payload = {
@@ -532,11 +560,79 @@ class DockerRuntimeManager:
                 "approvedAtMs": now_ms,
             },
         }
-        (devices_dir / "paired.json").write_text(
-            f"{json.dumps(paired_payload, indent=2)}\n",
-            encoding="utf-8",
+        for openclaw_index in range(self.openclaw_count):
+            devices_dir = self._host_state_dir(openclaw_index) / "devices"
+            devices_dir.mkdir(parents=True, exist_ok=True)
+            (devices_dir / "paired.json").write_text(
+                f"{json.dumps(paired_payload, indent=2)}\n",
+                encoding="utf-8",
+            )
+            (devices_dir / "pending.json").write_text("{}\n", encoding="utf-8")
+
+    def _gateway_host_ports(self) -> list[int]:
+        return [self.config.host_port + openclaw_index for openclaw_index in range(self.openclaw_count)]
+
+    def _gateway_container_ports(self) -> list[int]:
+        return [self.config.container_port + openclaw_index for openclaw_index in range(self.openclaw_count)]
+
+    def _state_dir_name(self, openclaw_index: int) -> str:
+        return f"openclaw-{openclaw_index:02d}"
+
+    def _host_state_dir(self, openclaw_index: int) -> Path:
+        if self.openclaw_count == 1:
+            return self.config_dir
+        return self.config_dir / self._state_dir_name(openclaw_index)
+
+    def _container_state_dir(self, openclaw_index: int) -> str:
+        if self.openclaw_count == 1:
+            return "/home/node/.openclaw"
+        return f"/home/node/.openclaw/{self._state_dir_name(openclaw_index)}"
+
+    def _host_workspace_dir(self, openclaw_index: int) -> Path:
+        if self.openclaw_count == 1:
+            return self.workspace_dir
+        return self.workspace_dir / self._state_dir_name(openclaw_index)
+
+    def _container_workspace_dir(self, openclaw_index: int) -> str:
+        if self.openclaw_count == 1:
+            return "/home/node/.openclaw/workspace"
+        return f"/home/node/.openclaw/workspace/{self._state_dir_name(openclaw_index)}"
+
+    def _build_multi_openclaw_command(self) -> str:
+        bind = shlex.quote(self.config.gateway_bind)
+        lines = [
+            "set -eu",
+            'pids=""',
+            'cleanup() {',
+            '  for pid in $pids; do',
+            '    kill "$pid" 2>/dev/null || true',
+            '  done',
+            '}',
+            'trap cleanup INT TERM EXIT',
+        ]
+        port_values = (
+            self._gateway_host_ports()
+            if self.config.network_mode == "host"
+            else self._gateway_container_ports()
         )
-        (devices_dir / "pending.json").write_text("{}\n", encoding="utf-8")
+        for openclaw_index, port in enumerate(port_values):
+            state_dir = shlex.quote(self._container_state_dir(openclaw_index))
+            workspace_dir = shlex.quote(self._container_workspace_dir(openclaw_index))
+            lines.append(f"mkdir -p {state_dir} {workspace_dir}")
+            lines.append(
+                f"OPENCLAW_STATE_DIR={state_dir} node dist/index.js gateway --allow-unconfigured --bind {bind} --port {port} &",
+            )
+            lines.append('pids="$pids $!"')
+        lines.extend(
+            [
+                "wait -n $pids",
+                "status=$?",
+                "cleanup",
+                "wait || true",
+                "exit $status",
+            ],
+        )
+        return "\n".join(lines)
 
     def _prepare_bind_mount_permissions(self) -> None:
         # The gateway image runs as the non-root "node" user, so bind-mounted
@@ -578,6 +674,7 @@ class HostDirectRuntimeManager(BaseRuntimeManager):
             url=self.resolved_url,
             token=self.config.gateway_token,
             started_by_harness=False,
+            urls=[self.resolved_url],
             host_pid=self.resolved_host_pid,
             host_pid_source=self.host_pid_source,
             runtime_dir=str(self.runtime_dir),

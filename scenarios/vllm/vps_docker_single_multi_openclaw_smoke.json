@@ -1,0 +1,123 @@
+{
+  "name": "vps-docker-single-multi-openclaw-smoke",
+  "runtime": {
+    "kind": "docker",
+    "image": "dr34m/openclaw:latest",
+    "container_name_base": "openclaw-bench-vps-multi-oc-smoke",
+    "host": "127.0.0.1",
+    "instance_num": 1,
+    "openclaw_num_per_instance": 2,
+    "host_port": 19189,
+    "container_port": 19189,
+    "network_mode": "host",
+    "gateway_bind": "loopback",
+    "gateway_token": "openclaw-bench-token",
+    "build_image_if_missing": true,
+    "force_rebuild": false,
+    "skip_channels": true,
+    "keep_container": false,
+    "startup_timeout_sec": 240,
+    "env": {
+      "VLLM_API_KEY": "sk-local-ascend"
+    },
+    "openclaw_config": {
+      "agents": {
+        "defaults": {
+          "thinkingDefault": "off",
+          "model": {
+            "primary": "vllm/qwen3-235b"
+          },
+          "params": {
+            "temperature": 0,
+            "maxTokens": 512
+          }
+        }
+      },
+      "models": {
+        "providers": {
+          "vllm": {
+            "baseUrl": "http://127.0.0.1:18000/v1",
+            "apiKey": "${VLLM_API_KEY}",
+            "api": "openai-completions",
+            "models": [
+              {
+                "id": "qwen3-235b",
+                "name": "Local vLLM Qwen3-235B",
+                "reasoning": false,
+                "input": [
+                  "text"
+                ],
+                "cost": {
+                  "input": 0,
+                  "output": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0
+                },
+                "contextWindow": 262144,
+                "maxTokens": 512,
+                "compat": {
+                  "supportsUsageInStreaming": true
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "client": {
+    "role": "operator",
+    "message": "用一句话回复：smoke ok",
+    "task_file": "",
+    "session_prefix": "vps-docker-single-multi-openclaw-smoke",
+    "session_mode": "per_worker",
+    "history_limit": 10,
+    "wait_timeout_ms": 180000,
+    "send_timeout_ms": 60000
+  },
+  "load": {
+    "concurrency": 2,
+    "requests_per_worker": 1,
+    "worker_stagger_ms": 0,
+    "request_pause_ms": 0
+  },
+  "collectors": {
+    "docker_stats": {
+      "enabled": true,
+      "interval_ms": 1000
+    },
+    "pidstat": {
+      "enabled": false,
+      "interval_sec": 1
+    },
+    "strace": {
+      "enabled": false
+    },
+    "node_trace": {
+      "enabled": false
+    },
+    "iostat": {
+      "enabled": false,
+      "interval_sec": 1
+    },
+    "perf_stat": {
+      "enabled": false
+    },
+    "perf_record": {
+      "enabled": false
+    },
+    "vmstat": {
+      "enabled": false,
+      "interval_sec": 1
+    },
+    "npu_smi": {
+      "enabled": false,
+      "interval_sec": 1,
+      "auto_discover": true,
+      "card_ids": []
+    }
+  },
+  "artifacts": {
+    "summary_only": false
+  }
+}

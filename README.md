@@ -118,7 +118,17 @@ VPS 场景模板：
 ```bash
 python3 -m openclaw_harness run --scenario scenarios/vps_host_direct_single.json --output-root out
 python3 -m openclaw_harness run --scenario scenarios/vps_docker_single.json --output-root out
+python3 -m openclaw_harness run --scenario scenarios/vllm/vps_docker_single_multi_openclaw_smoke.json --output-root out/smoke_multi_openclaw
 ```
+
+`scenarios/vllm/vps_docker_single_multi_openclaw_smoke.json` 是单容器多 OpenClaw 的最小示例：
+
+- `runtime.instance_num = 1`
+- `runtime.openclaw_num_per_instance = 2`
+- `load.concurrency = 2`
+- `load.requests_per_worker = 1`
+
+一次成功运行后，可以在产物里的 `preflight.json` 查看 `target.urls`，并在 `latency.csv` 里确认两条请求分别命中不同的 `gateway_url`。
 
 辅助脚本：
 
