@@ -1,0 +1,4 @@
+scenario,rows_with_usage,output_tokens_mean,output_tps_request_mean,output_tps_session_delta_mean
+multi-5x4w-stag150,20,16.0,4.43982135,4.43982135
+multi-5x4w-stag300,20,16.0,7.2573113000000005,7.2573113000000005
+multi-5x4w-stag500,20,16.0,4.7444711,4.7444711

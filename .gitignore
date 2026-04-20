@@ -8,3 +8,6 @@ res/*
 !res/task-01/**
 __pycache__/
 .pytest_cache/
+CoClaw/backend/.venv_co/
+CoClaw/frontend/node_modules/
+CoClaw/frontend/package-lock.json
