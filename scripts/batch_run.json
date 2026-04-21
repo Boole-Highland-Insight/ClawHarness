@@ -85,6 +85,75 @@
       }
     },
     {
+      "key": "single-inst-25x4i-limited",
+      "overrides": {
+        "runtime.instance_num": 4,
+        "runtime.docker_run_args": [
+          "--cpus",
+          "2",
+          "--memory",
+          "2g",
+          "--memory-swap",
+          "2g",
+          "--pids-limit",
+          "512",
+          "--shm-size",
+          "1g",
+          "--ulimit",
+          "nofile=65535:65535"
+        ],
+        "load.concurrency": 1,
+        "load.requests_per_worker": 25,
+        "load.worker_stagger_ms": 0
+      }
+    },
+    {
+      "key": "single-inst-25x4i-stag300-limited",
+      "overrides": {
+        "runtime.instance_num": 4,
+        "runtime.docker_run_args": [
+          "--cpus",
+          "2",
+          "--memory",
+          "2g",
+          "--memory-swap",
+          "2g",
+          "--pids-limit",
+          "512",
+          "--shm-size",
+          "1g",
+          "--ulimit",
+          "nofile=65535:65535"
+        ],
+        "load.concurrency": 1,
+        "load.requests_per_worker": 25,
+        "load.worker_stagger_ms": 300
+      }
+    },
+    {
+      "key": "single-inst-25x4i-stag500-limited",
+      "overrides": {
+        "runtime.instance_num": 4,
+        "runtime.docker_run_args": [
+          "--cpus",
+          "2",
+          "--memory",
+          "2g",
+          "--memory-swap",
+          "2g",
+          "--pids-limit",
+          "512",
+          "--shm-size",
+          "1g",
+          "--ulimit",
+          "nofile=65535:65535"
+        ],
+        "load.concurrency": 1,
+        "load.requests_per_worker": 25,
+        "load.worker_stagger_ms": 500
+      }
+    },
+    {
       "key": "multi-inst-25x2ix2w-stag150",
       "overrides": {
         "runtime.instance_num": 2,
@@ -103,9 +172,55 @@
       }
     },
     {
+      "key": "multi-inst-25x2ix2w-stag300-limited",
+      "overrides": {
+        "runtime.instance_num": 2,
+        "runtime.docker_run_args": [
+          "--cpus",
+          "4",
+          "--memory",
+          "4g",
+          "--memory-swap",
+          "4g",
+          "--pids-limit",
+          "768",
+          "--shm-size",
+          "1g",
+          "--ulimit",
+          "nofile=65535:65535"
+        ],
+        "load.concurrency": 2,
+        "load.requests_per_worker": 25,
+        "load.worker_stagger_ms": 300
+      }
+    },
+    {
       "key": "multi-inst-25x2ix2w-stag500",
       "overrides": {
         "runtime.instance_num": 2,
+        "load.concurrency": 2,
+        "load.requests_per_worker": 25,
+        "load.worker_stagger_ms": 500
+      }
+    },
+    {
+      "key": "multi-inst-25x2ix2w-stag500-limited",
+      "overrides": {
+        "runtime.instance_num": 2,
+        "runtime.docker_run_args": [
+          "--cpus",
+          "4",
+          "--memory",
+          "4g",
+          "--memory-swap",
+          "4g",
+          "--pids-limit",
+          "768",
+          "--shm-size",
+          "1g",
+          "--ulimit",
+          "nofile=65535:65535"
+        ],
         "load.concurrency": 2,
         "load.requests_per_worker": 25,
         "load.worker_stagger_ms": 500
@@ -171,5 +286,6 @@
         "load.worker_stagger_ms": 500
       }
     }
+    
   ]
 }

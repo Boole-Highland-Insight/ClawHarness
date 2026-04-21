@@ -1,0 +1,4 @@
+scenario,pct_cpu_total,pct_cpu_usr,pct_cpu_system,pct_cpu_wait
+multi-inst-25x1dx4ix1w-stag150,43.16741573033708,,,
+multi-inst-25x1dx4ix1w-stag300,57.192944785276076,,,
+multi-inst-25x1dx4ix1w-stag500,47.83576576576577,,,

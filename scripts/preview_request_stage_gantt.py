@@ -56,11 +56,8 @@ def load_run(run_dir: Path, label: str) -> LoadedRun:
     summary_payload = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
     scenario_payload = json.loads((run_dir / "scenario.resolved.json").read_text(encoding="utf-8"))
     run_started_at = parse_iso_datetime(summary_payload.get("started_at", ""))
-    run_finished_at = parse_iso_datetime(summary_payload.get("finished_at", ""))
     if run_started_at is None:
         raise ValueError(f"Run summary missing started_at: {run_dir}")
-    if run_finished_at is None or run_finished_at < run_started_at:
-        run_finished_at = run_started_at
 
     load_config = scenario_payload.get("load", {})
     worker_stagger_ms = int(load_config.get("worker_stagger_ms", 0) or 0)
@@ -114,7 +111,7 @@ def load_run(run_dir: Path, label: str) -> LoadedRun:
             )
 
     bars.sort(key=lambda item: (item.request_start_sec, item.request_finish_sec, item.label))
-    run_finish_sec = max(0.0, (run_finished_at - run_started_at).total_seconds())
+    run_finish_sec = max((bar.request_finish_sec for bar in bars), default=0.0)
     return LoadedRun(label=label, bars=bars, run_finish_sec=run_finish_sec)
 
 
@@ -216,7 +213,14 @@ def main() -> int:
         ax.set_xlim(0.0, global_max_finish * 1.03 if global_max_finish > 0 else 1.0)
 
     if legend_handles is not None:
-        fig.legend(legend_handles, ["stagger", "connect", "request"], loc="upper center", ncol=3, frameon=False)
+        fig.legend(
+            legend_handles,
+            ["stagger", "connect", "request"],
+            loc="lower center",
+            bbox_to_anchor=(0.5, 0.0),
+            ncol=3,
+            frameon=False,
+        )
     fig.suptitle(args.title)
 
     output_path = Path(args.output)

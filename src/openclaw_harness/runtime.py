@@ -145,6 +145,8 @@ class DockerRuntimeManager:
             )
         if self.config.skip_channels:
             docker_args.extend(["-e", "OPENCLAW_SKIP_CHANNELS=1"])
+        if self.config.docker_run_args:
+            docker_args.extend(self.config.docker_run_args)
         gateway_port = (
             self.config.host_port
             if self.config.network_mode == "host"

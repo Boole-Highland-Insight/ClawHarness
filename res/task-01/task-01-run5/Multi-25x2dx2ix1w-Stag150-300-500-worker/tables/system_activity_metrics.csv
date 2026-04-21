@@ -1,0 +1,4 @@
+scenario,interrupts_per_s,system_context_switches_per_s,run_queue,blocked_processes,benchmark_cswch_per_s,benchmark_nvcswch_per_s,benchmark_iodelay
+multi-inst-25x2dx2ix1w-stag150,822249.3157247554,1325298.9728665333,32.309576517698616,0.0019455252918287938,,,
+multi-inst-25x2dx2ix1w-stag300,814277.379419986,1319069.4805031447,30.99364081062194,0.006533892382948986,,,
+multi-inst-25x2dx2ix1w-stag500,803880.9822522881,1306945.3873975328,30.87957421408675,0.0,,,

@@ -94,6 +94,7 @@ def plot_time_series_panels_multi(
 ) -> None:
     if pair.plt is None:
         raise RuntimeError("matplotlib is required to render figures")
+    pair.configure_matplotlib_fonts()
 
     usable_specs = [
         spec
@@ -159,6 +160,7 @@ def plot_latency_timeline_multi(
 ) -> None:
     if pair.plt is None:
         raise RuntimeError("matplotlib is required to render figures")
+    pair.configure_matplotlib_fonts()
 
     loaded_specs: list[dict[str, Any]] = []
     for index, spec in enumerate(run_specs):
@@ -251,6 +253,19 @@ def combine_metric_means(
     return combine_numeric(values, mode=mode)
 
 
+def combine_metric_means_with_fallback(
+    analyses: list[dict[str, Any]],
+    candidates: list[tuple[list[str], float]],
+    *,
+    mode: str,
+) -> float | None:
+    for path, scale in candidates:
+        value = combine_metric_means(analyses, path, mode=mode)
+        if value is not None:
+            return value * scale
+    return None
+
+
 def pick_busiest_device(analyses: list[dict[str, Any]]) -> str | None:
     for analysis in analyses:
         iostat = pair.nested_get(analysis, ["iostat"], {})
@@ -317,6 +332,21 @@ def aggregate_time_series_points(
     return points
 
 
+def aggregate_time_series_points_with_fallback(
+    analyses: list[dict[str, Any]],
+    candidates: list[tuple[list[str], float]],
+    *,
+    mode: str,
+) -> list[tuple[float, float]]:
+    for path, scale in candidates:
+        points = aggregate_time_series_points(analyses, path, mode=mode)
+        if points:
+            if scale != 1.0:
+                return [(t_sec, value * scale) for t_sec, value in points]
+            return points
+    return []
+
+
 def build_aggregated_series(
     summary_records: list[dict[str, Any]],
     path: list[str],
@@ -331,6 +361,27 @@ def build_aggregated_series(
                 "points": aggregate_time_series_points(
                     get_instance_analyses(record["summary"]),
                     path,
+                    mode=mode,
+                ),
+            },
+        )
+    return series
+
+
+def build_aggregated_series_with_fallback(
+    summary_records: list[dict[str, Any]],
+    candidates: list[tuple[list[str], float]],
+    *,
+    mode: str,
+) -> list[dict[str, Any]]:
+    series: list[dict[str, Any]] = []
+    for record in summary_records:
+        series.append(
+            {
+                "label": str(record["display_name"]),
+                "points": aggregate_time_series_points_with_fallback(
+                    get_instance_analyses(record["summary"]),
+                    candidates,
                     mode=mode,
                 ),
             },
@@ -371,9 +422,12 @@ def build_system_profile_row(summary: dict[str, Any], run_dir: Path) -> dict[str
         "total_p50_ms": latency["total"]["p50"],
         "total_p95_ms": latency["total"]["p95"],
         "total_p99_ms": latency["total"]["p99"],
-        "benchmark_cpu_percent_mean": combine_metric_means(
+        "benchmark_cpu_percent_mean": combine_metric_means_with_fallback(
             analyses,
-            ["pidstat", "sections", "cpu", "metric_summaries", "pct_cpu"],
+            [
+                (["pidstat", "sections", "cpu", "metric_summaries", "pct_cpu"], 1.0),
+                (["docker_stats", "metric_summaries", "cpu_percent_value"], 1.0),
+            ],
             mode="sum",
         ),
         "benchmark_cpu_usr_percent_mean": combine_metric_means(
@@ -391,14 +445,20 @@ def build_system_profile_row(summary: dict[str, Any], run_dir: Path) -> dict[str
             ["pidstat", "sections", "cpu", "metric_summaries", "pct_wait"],
             mode="sum",
         ),
-        "benchmark_rss_kib_mean": combine_metric_means(
+        "benchmark_rss_kib_mean": combine_metric_means_with_fallback(
             analyses,
-            ["pidstat", "sections", "memory", "metric_summaries", "rss_kib"],
+            [
+                (["pidstat", "sections", "memory", "metric_summaries", "rss_kib"], 1.0),
+                (["docker_stats", "metric_summaries", "mem_usage_bytes"], 1.0 / 1024.0),
+            ],
             mode="sum",
         ),
-        "benchmark_kb_wr_per_s_mean": combine_metric_means(
+        "benchmark_kb_wr_per_s_mean": combine_metric_means_with_fallback(
             analyses,
-            ["pidstat", "sections", "io", "metric_summaries", "kb_wr_per_s"],
+            [
+                (["pidstat", "sections", "io", "metric_summaries", "kb_wr_per_s"], 1.0),
+                (["docker_stats", "metric_summaries", "block_write_bytes_per_s"], 1.0 / 1024.0),
+            ],
             mode="sum",
         ),
         "benchmark_iodelay_mean": combine_metric_means(
@@ -447,6 +507,26 @@ def build_system_profile_row(summary: dict[str, Any], run_dir: Path) -> dict[str
             ["vmstat", "key_metric_summaries", "interrupts_per_s"],
             mode="mean",
         ),
+        "system_cpu_user_percent_mean": combine_metric_means(
+            analyses,
+            ["vmstat", "metric_summaries", "us"],
+            mode="mean",
+        ),
+        "system_cpu_system_percent_mean": combine_metric_means(
+            analyses,
+            ["vmstat", "metric_summaries", "sy"],
+            mode="mean",
+        ),
+        "system_cpu_wait_percent_mean": combine_metric_means(
+            analyses,
+            ["vmstat", "metric_summaries", "wa"],
+            mode="mean",
+        ),
+        "system_cpu_idle_percent_mean": combine_metric_means(
+            analyses,
+            ["vmstat", "metric_summaries", "id"],
+            mode="mean",
+        ),
         "system_context_switches_per_s_mean": combine_metric_means(
             analyses,
             ["vmstat", "key_metric_summaries", "context_switches_per_s"],
@@ -490,16 +570,22 @@ def build_system_profile_row(summary: dict[str, Any], run_dir: Path) -> dict[str
 def build_system_peak_row(summary: dict[str, Any]) -> dict[str, Any]:
     analyses = get_instance_analyses(summary)
     benchmark_cpu_peak, benchmark_cpu_peak_t_sec = peak_from_points(
-        aggregate_time_series_points(
+        aggregate_time_series_points_with_fallback(
             analyses,
-            ["pidstat", "sections", "cpu", "time_series", "pct_cpu"],
+            [
+                (["pidstat", "sections", "cpu", "time_series", "pct_cpu"], 1.0),
+                (["docker_stats", "time_series", "cpu_percent_value"], 1.0),
+            ],
             mode="sum",
         ),
     )
     benchmark_rss_peak, benchmark_rss_peak_t_sec = peak_from_points(
-        aggregate_time_series_points(
+        aggregate_time_series_points_with_fallback(
             analyses,
-            ["pidstat", "sections", "memory", "time_series", "rss_kib"],
+            [
+                (["pidstat", "sections", "memory", "time_series", "rss_kib"], 1.0),
+                (["docker_stats", "time_series", "mem_usage_bytes"], 1.0 / 1024.0),
+            ],
             mode="sum",
         ),
     )
@@ -703,13 +789,21 @@ def build_triplet_outputs(
             "benchmark_cpu_usr_percent_mean",
             "benchmark_cpu_system_percent_mean",
             "benchmark_cpu_wait_percent_mean",
+            "system_cpu_user_percent_mean",
+            "system_cpu_system_percent_mean",
+            "system_cpu_wait_percent_mean",
+            "system_cpu_idle_percent_mean",
         ]
     ].rename(
         columns={
-            "benchmark_cpu_percent_mean": "pct_cpu_total",
-            "benchmark_cpu_usr_percent_mean": "pct_cpu_usr",
-            "benchmark_cpu_system_percent_mean": "pct_cpu_system",
-            "benchmark_cpu_wait_percent_mean": "pct_cpu_wait",
+            "benchmark_cpu_percent_mean": "benchmark_pct_cpu_total",
+            "benchmark_cpu_usr_percent_mean": "benchmark_pct_cpu_usr",
+            "benchmark_cpu_system_percent_mean": "benchmark_pct_cpu_system",
+            "benchmark_cpu_wait_percent_mean": "benchmark_pct_cpu_wait",
+            "system_cpu_user_percent_mean": "system_cpu_user_pct",
+            "system_cpu_system_percent_mean": "system_cpu_system_pct",
+            "system_cpu_wait_percent_mean": "system_cpu_iowait_pct",
+            "system_cpu_idle_percent_mean": "system_cpu_idle_pct",
         },
     )
     system_memory_df = profile_df[["benchmark_rss_kib_mean"]].rename(
@@ -803,7 +897,7 @@ def build_triplet_outputs(
         pair.save_dataframe(df, tri_dir / "tables" / f"{table_name}.csv")
 
     if render_figures:
-        pair.plt.style.use("seaborn-v0_8-whitegrid")
+        pair.apply_plot_style("seaborn-v0_8-whitegrid")
 
         pair.plot_dataframe(
             latency_overview_df,
@@ -825,7 +919,7 @@ def build_triplet_outputs(
         )
         pair.plot_dataframe(
             system_cpu_df,
-            "Benchmark CPU Metrics",
+            "Benchmark and System CPU Metrics",
             "mean percent",
             tri_dir / "figures" / "system_cpu_metrics.png",
         )
@@ -898,11 +992,14 @@ def build_triplet_outputs(
         plot_time_series_panels_multi(
             panel_specs=[
                 {
-                    "subtitle": "Benchmark Process CPU Percent (sum across instances)",
+                    "subtitle": "Benchmark / Container CPU Percent (sum across instances)",
                     "ylabel": "percent",
-                    "series": build_aggregated_series(
+                    "series": build_aggregated_series_with_fallback(
                         summary_records,
-                        ["pidstat", "sections", "cpu", "time_series", "pct_cpu"],
+                        [
+                            (["pidstat", "sections", "cpu", "time_series", "pct_cpu"], 1.0),
+                            (["docker_stats", "time_series", "cpu_percent_value"], 1.0),
+                        ],
                         mode="sum",
                     ),
                 },
@@ -925,6 +1022,33 @@ def build_triplet_outputs(
                     ),
                 },
                 {
+                    "subtitle": "System CPU User (mean across instance collectors)",
+                    "ylabel": "percent",
+                    "series": build_aggregated_series(
+                        summary_records,
+                        ["vmstat", "metric_time_series", "us"],
+                        mode="mean",
+                    ),
+                },
+                {
+                    "subtitle": "System CPU System (mean across instance collectors)",
+                    "ylabel": "percent",
+                    "series": build_aggregated_series(
+                        summary_records,
+                        ["vmstat", "metric_time_series", "sy"],
+                        mode="mean",
+                    ),
+                },
+                {
+                    "subtitle": "System CPU iowait (mean across instance collectors)",
+                    "ylabel": "percent",
+                    "series": build_aggregated_series(
+                        summary_records,
+                        ["vmstat", "metric_time_series", "wa"],
+                        mode="mean",
+                    ),
+                },
+                {
                     "subtitle": "VM Run Queue (mean across instance collectors)",
                     "ylabel": "processes",
                     "series": build_aggregated_series(
@@ -940,11 +1064,14 @@ def build_triplet_outputs(
         plot_time_series_panels_multi(
             panel_specs=[
                 {
-                    "subtitle": "Benchmark RSS Total (sum across instances)",
+                    "subtitle": "Benchmark / Container Memory Total (sum across instances)",
                     "ylabel": "KiB",
-                    "series": build_aggregated_series(
+                    "series": build_aggregated_series_with_fallback(
                         summary_records,
-                        ["pidstat", "sections", "memory", "time_series", "rss_kib"],
+                        [
+                            (["pidstat", "sections", "memory", "time_series", "rss_kib"], 1.0),
+                            (["docker_stats", "time_series", "mem_usage_bytes"], 1.0 / 1024.0),
+                        ],
                         mode="sum",
                     ),
                 },

@@ -1,0 +1,4 @@
+scenario,run_dir,run_started_at,run_finished_at,run_wall_clock_sec,first_request_started_at,last_request_finished_at,request_window_sec
+单实例串行,/root/Zehao/ClawHarness/out/batch_run_5/task-01/20260420T122607Z_vps-docker-qwen3-235b-single-100-worker,2026-04-20T12:26:14.982918+00:00,2026-04-20T12:44:18.873534+00:00,1083.890616,2026-04-20T12:26:15.050496+00:00,2026-04-20T12:44:06.666027+00:00,1071.615531
+单实例并行,/root/Zehao/ClawHarness/out/batch_run_5/task-01/20260420T131723Z_vps-docker-qwen3-235b-multi-25x4w-stag500-worker,2026-04-20T13:17:32.152036+00:00,2026-04-20T13:25:32.847096+00:00,480.69506,2026-04-20T13:17:32.222626+00:00,2026-04-20T13:25:19.059390+00:00,466.836764
+多实例并行,/root/Zehao/ClawHarness/out/batch_run_5/task-01/20260420T153103Z_vps-docker-qwen3-235b-multi-inst-25x1dx4ix1w-stag500-worker,2026-04-20T15:31:12.180525+00:00,2026-04-20T15:40:57.872852+00:00,585.692327,2026-04-20T15:31:13.248357+00:00,2026-04-20T15:40:30.400265+00:00,557.151908

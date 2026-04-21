@@ -1,0 +1,4 @@
+scenario,utilization_pct,hbm_usage_pct,aicore_usage_pct
+single-inst-25x4i-stag0,78.93820520480008,95.0,37.92007480856203
+single-inst-25x4i-0-lim,77.18891958841463,97.0,37.798628048780486
+single-inst-25x4i-stag300-lim,82.61852975650334,97.0,39.67006484422262

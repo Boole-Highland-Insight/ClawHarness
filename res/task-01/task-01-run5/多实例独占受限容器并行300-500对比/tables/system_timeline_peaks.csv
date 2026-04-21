@@ -1,0 +1,5 @@
+scenario,benchmark_cpu_peak,benchmark_cpu_peak_t_sec,benchmark_rss_peak_kib,benchmark_rss_peak_t_sec,system_disk_pct_util_peak,system_disk_pct_util_peak_t_sec,system_disk_w_await_peak,system_disk_w_await_peak_t_sec,system_interrupts_peak,system_interrupts_peak_t_sec,system_context_switches_peak,system_context_switches_peak_t_sec,system_run_queue_peak,system_run_queue_peak_t_sec,npu_utilization_peak,npu_utilization_peak_t_sec,npu_aicore_peak,npu_aicore_peak_t_sec,npu_hbm_peak,npu_hbm_peak_t_sec
+多实例并行300,246.0,9.0,1906832.0,24.0,6.8999999999999995,42.0,3.875,8.0,981685.0,348.0,1560240.5,355.0,65.0,144.0,96.4375,197.747474,53.1875,140.7817,97.0,0.0
+多实例独占受限并行0,488.0,0.0,2296928.0,35.0,10.3,17.0,2.645,17.0,1004748.75,339.0,1542421.25,339.0,63.25,131.0,96.6875,241.072855,53.25,57.726226,97.0,0.0
+多实例并行500,252.0,0.0,1915944.0,24.0,9.6,37.0,3.705,8.0,1027464.5,404.0,1590592.5,397.0,69.5,99.0,96.75,362.585011,52.4375,121.556356,97.0,0.0
+多实例独占受限并行300,424.0,0.0,2232592.0,31.0,9.1,10.0,2.23,0.0,997202.0,530.0,1534735.0,465.0,63.25,157.0,96.9375,278.840938,53.375,98.438707,97.0,0.0

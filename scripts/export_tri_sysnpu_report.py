@@ -123,6 +123,7 @@ def plot_time_series_panels_multi(
 ) -> None:
     if pair.plt is None:
         raise RuntimeError("matplotlib is required to render figures")
+    pair.configure_matplotlib_fonts()
 
     usable_specs = [
         spec
@@ -188,6 +189,7 @@ def plot_latency_timeline_multi(
 ) -> None:
     if pair.plt is None:
         raise RuntimeError("matplotlib is required to render figures")
+    pair.configure_matplotlib_fonts()
 
     loaded_specs: list[dict[str, Any]] = []
     for index, spec in enumerate(run_specs):
@@ -608,7 +610,7 @@ def build_triplet_outputs(
         )
 
     if render_figures:
-        pair.plt.style.use("seaborn-v0_8-whitegrid")
+        pair.apply_plot_style("seaborn-v0_8-whitegrid")
 
         pair.plot_dataframe(
             latency_overview_df,

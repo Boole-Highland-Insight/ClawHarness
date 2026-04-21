@@ -1,0 +1,4 @@
+scenario,rows_with_usage,output_tokens_mean,output_tps_request_mean,output_tps_session_delta_mean
+single-inst-25x4i-stag0,100,107.71,9.08894059,4.52013047
+single-inst-25x4i-0-lim,100,84.82,8.44429218,4.04962153
+single-inst-25x4i-stag300-lim,100,146.72,9.41072923,4.6364146900000005

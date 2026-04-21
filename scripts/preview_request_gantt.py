@@ -14,6 +14,7 @@ class RequestBar:
     label: str
     start_sec: float
     finish_sec: float
+    worker_id: int | None
 
     @property
     def duration_sec(self) -> float:
@@ -31,7 +32,7 @@ def parse_iso_datetime(value: str) -> datetime | None:
 
 
 def load_request_bars(csv_path: Path) -> list[RequestBar]:
-    rows: list[tuple[datetime, datetime, str]] = []
+    rows: list[tuple[datetime, datetime, str, int | None]] = []
     with csv_path.open("r", encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle)
         for row in reader:
@@ -44,20 +45,26 @@ def load_request_bars(csv_path: Path) -> list[RequestBar]:
             worker_id = str(row.get("worker_id", "")).strip() or "?"
             request_index = str(row.get("request_index", "")).strip() or "?"
             label = f"w{worker_id}-r{request_index}"
-            rows.append((started_at, finished_at, label))
+            worker_id_value: int | None
+            try:
+                worker_id_value = int(worker_id)
+            except ValueError:
+                worker_id_value = None
+            rows.append((started_at, finished_at, label, worker_id_value))
 
     if not rows:
         return []
 
     rows.sort(key=lambda item: (item[0], item[1], item[2]))
-    origin = min(started_at for started_at, _, _ in rows)
+    origin = min(started_at for started_at, _, _, _ in rows)
     return [
         RequestBar(
             label=label,
             start_sec=(started_at - origin).total_seconds(),
             finish_sec=(finished_at - origin).total_seconds(),
+            worker_id=worker_id,
         )
-        for started_at, finished_at, label in rows
+        for started_at, finished_at, label, worker_id in rows
     ]
 
 
@@ -83,12 +90,27 @@ def parse_args() -> argparse.Namespace:
         default="Request Gantt Preview",
         help="Figure title.",
     )
+    parser.add_argument(
+        "--color-by-worker",
+        action="store_true",
+        help="Color bars by worker_id within each run instead of using one color per run.",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
     colors = ["#e15759", "#4e79a7", "#59a14f", "#f28e2b", "#b07aa1"]
+    worker_palette = [
+        "#4e79a7",
+        "#59a14f",
+        "#9c755f",
+        "#b07aa1",
+        "#f28e2b",
+        "#e15759",
+        "#76b7b2",
+        "#edc948",
+    ]
 
     loaded_runs: list[tuple[str, list[RequestBar]]] = []
     global_max_finish = 0.0
@@ -118,13 +140,22 @@ def main() -> int:
         y_positions = list(range(len(bars)))
         left_values = [bar.start_sec for bar in bars]
         widths = [bar.duration_sec for bar in bars]
+        if args.color_by_worker:
+            worker_ids = [bar.worker_id for bar in bars if bar.worker_id is not None]
+            worker_color_map = {
+                worker_id: worker_palette[position % len(worker_palette)]
+                for position, worker_id in enumerate(sorted(set(worker_ids)))
+            }
+            bar_colors = [worker_color_map.get(bar.worker_id, color) for bar in bars]
+        else:
+            bar_colors = color
         ax.barh(
             y_positions,
             widths,
             left=left_values,
             height=0.72,
-            color=color,
-            edgecolor=color,
+            color=bar_colors,
+            edgecolor=bar_colors,
             alpha=0.35,
         )
         ax.axvline(

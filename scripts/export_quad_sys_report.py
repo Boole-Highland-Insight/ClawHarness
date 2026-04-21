@@ -187,13 +187,21 @@ def build_quartet_outputs(
             "benchmark_cpu_usr_percent_mean",
             "benchmark_cpu_system_percent_mean",
             "benchmark_cpu_wait_percent_mean",
+            "system_cpu_user_percent_mean",
+            "system_cpu_system_percent_mean",
+            "system_cpu_wait_percent_mean",
+            "system_cpu_idle_percent_mean",
         ]
     ].rename(
         columns={
-            "benchmark_cpu_percent_mean": "pct_cpu_total",
-            "benchmark_cpu_usr_percent_mean": "pct_cpu_usr",
-            "benchmark_cpu_system_percent_mean": "pct_cpu_system",
-            "benchmark_cpu_wait_percent_mean": "pct_cpu_wait",
+            "benchmark_cpu_percent_mean": "benchmark_pct_cpu_total",
+            "benchmark_cpu_usr_percent_mean": "benchmark_pct_cpu_usr",
+            "benchmark_cpu_system_percent_mean": "benchmark_pct_cpu_system",
+            "benchmark_cpu_wait_percent_mean": "benchmark_pct_cpu_wait",
+            "system_cpu_user_percent_mean": "system_cpu_user_pct",
+            "system_cpu_system_percent_mean": "system_cpu_system_pct",
+            "system_cpu_wait_percent_mean": "system_cpu_iowait_pct",
+            "system_cpu_idle_percent_mean": "system_cpu_idle_pct",
         },
     )
     system_memory_df = profile_df[["benchmark_rss_kib_mean"]].rename(
@@ -287,7 +295,7 @@ def build_quartet_outputs(
         pair.save_dataframe(df, quad_dir / "tables" / f"{table_name}.csv")
 
     if render_figures:
-        pair.plt.style.use("seaborn-v0_8-whitegrid")
+        pair.apply_plot_style("seaborn-v0_8-whitegrid")
 
         pair.plot_dataframe(
             latency_overview_df,
@@ -309,7 +317,7 @@ def build_quartet_outputs(
         )
         pair.plot_dataframe(
             system_cpu_df,
-            "Benchmark CPU Metrics",
+            "Benchmark and System CPU Metrics",
             "mean percent",
             quad_dir / "figures" / "system_cpu_metrics.png",
         )
@@ -382,11 +390,14 @@ def build_quartet_outputs(
         tri_sys.plot_time_series_panels_multi(
             panel_specs=[
                 {
-                    "subtitle": "Benchmark Process CPU Percent (sum across instances)",
+                    "subtitle": "Benchmark / Container CPU Percent (sum across instances)",
                     "ylabel": "percent",
-                    "series": tri_sys.build_aggregated_series(
+                    "series": tri_sys.build_aggregated_series_with_fallback(
                         summary_records,
-                        ["pidstat", "sections", "cpu", "time_series", "pct_cpu"],
+                        [
+                            (["pidstat", "sections", "cpu", "time_series", "pct_cpu"], 1.0),
+                            (["docker_stats", "time_series", "cpu_percent_value"], 1.0),
+                        ],
                         mode="sum",
                     ),
                 },
@@ -409,6 +420,33 @@ def build_quartet_outputs(
                     ),
                 },
                 {
+                    "subtitle": "System CPU User (mean across instance collectors)",
+                    "ylabel": "percent",
+                    "series": tri_sys.build_aggregated_series(
+                        summary_records,
+                        ["vmstat", "metric_time_series", "us"],
+                        mode="mean",
+                    ),
+                },
+                {
+                    "subtitle": "System CPU System (mean across instance collectors)",
+                    "ylabel": "percent",
+                    "series": tri_sys.build_aggregated_series(
+                        summary_records,
+                        ["vmstat", "metric_time_series", "sy"],
+                        mode="mean",
+                    ),
+                },
+                {
+                    "subtitle": "System CPU iowait (mean across instance collectors)",
+                    "ylabel": "percent",
+                    "series": tri_sys.build_aggregated_series(
+                        summary_records,
+                        ["vmstat", "metric_time_series", "wa"],
+                        mode="mean",
+                    ),
+                },
+                {
                     "subtitle": "VM Run Queue (mean across instance collectors)",
                     "ylabel": "processes",
                     "series": tri_sys.build_aggregated_series(
@@ -424,11 +462,14 @@ def build_quartet_outputs(
         tri_sys.plot_time_series_panels_multi(
             panel_specs=[
                 {
-                    "subtitle": "Benchmark RSS Total (sum across instances)",
+                    "subtitle": "Benchmark / Container Memory Total (sum across instances)",
                     "ylabel": "KiB",
-                    "series": tri_sys.build_aggregated_series(
+                    "series": tri_sys.build_aggregated_series_with_fallback(
                         summary_records,
-                        ["pidstat", "sections", "memory", "time_series", "rss_kib"],
+                        [
+                            (["pidstat", "sections", "memory", "time_series", "rss_kib"], 1.0),
+                            (["docker_stats", "time_series", "mem_usage_bytes"], 1.0 / 1024.0),
+                        ],
                         mode="sum",
                     ),
                 },

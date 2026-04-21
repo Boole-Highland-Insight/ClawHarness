@@ -4,6 +4,7 @@ import argparse
 import csv
 import json
 import math
+import os
 import shutil
 import sys
 from datetime import datetime
@@ -14,14 +15,38 @@ import pandas as pd
 
 try:
     import matplotlib.pyplot as plt
+    from matplotlib import font_manager
 except ModuleNotFoundError:
     plt = None
+    font_manager = None
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 OUT_ROOT = REPO_ROOT / "out"
 RES_ROOT = REPO_ROOT / "res"
 SCRIPTS_ROOT = REPO_ROOT / "scripts"
+
+CJK_FONT_FAMILIES = [
+    "Noto Sans CJK SC",
+    "Noto Sans CJK TC",
+    "Noto Sans CJK JP",
+    "Noto Serif CJK SC",
+    "Noto Serif CJK TC",
+    "Noto Serif CJK JP",
+    "Source Han Sans SC",
+    "Source Han Serif SC",
+    "WenQuanYi Zen Hei",
+    "WenQuanYi Micro Hei",
+    "Microsoft YaHei",
+    "SimHei",
+    "PingFang SC",
+    "Heiti SC",
+    "Songti SC",
+    "Arial Unicode MS",
+]
+
+_CONFIGURED_CJK_FONT: str | None = None
+_CJK_FONT_WARNING_EMITTED = False
 
 sys.path.insert(0, str(SCRIPTS_ROOT))
 
@@ -38,6 +63,75 @@ except ModuleNotFoundError:
 
     def load_points(csv_path: Path, only_success: bool) -> list[Any]:
         raise RuntimeError("plot_latency dependencies are unavailable; rerun without --skip-figures or install matplotlib")
+
+
+def configure_matplotlib_fonts() -> None:
+    global _CONFIGURED_CJK_FONT, _CJK_FONT_WARNING_EMITTED
+
+    if plt is None or font_manager is None:
+        return
+
+    def apply_chosen_font(font_name: str) -> None:
+        existing = list(plt.rcParams.get("font.sans-serif", []))
+        plt.rcParams["font.sans-serif"] = [font_name, *[name for name in existing if name != font_name]]
+        plt.rcParams["font.family"] = "sans-serif"
+        plt.rcParams["axes.unicode_minus"] = False
+
+    if _CONFIGURED_CJK_FONT is not None:
+        apply_chosen_font(_CONFIGURED_CJK_FONT)
+        return
+
+    custom_font_path = os.environ.get("CLAWHARNESS_MPL_FONT") or os.environ.get("MPL_FONT_FILE")
+    if custom_font_path:
+        try:
+            font_manager.fontManager.addfont(custom_font_path)
+        except OSError:
+            if not _CJK_FONT_WARNING_EMITTED:
+                print(
+                    f"warning: unable to load custom matplotlib font: {custom_font_path}",
+                    file=sys.stderr,
+                )
+                _CJK_FONT_WARNING_EMITTED = True
+
+    available_names = {
+        font.name
+        for font in font_manager.fontManager.ttflist
+        if getattr(font, "name", None)
+    }
+
+    chosen_font = next((name for name in CJK_FONT_FAMILIES if name in available_names), None)
+    if chosen_font is None:
+        chosen_font = next(
+            (
+                name
+                for name in available_names
+                if any(candidate.lower() in name.lower() for candidate in CJK_FONT_FAMILIES)
+            ),
+            None,
+        )
+
+    if chosen_font is not None:
+        _CONFIGURED_CJK_FONT = chosen_font
+        apply_chosen_font(chosen_font)
+        return
+
+    if not _CJK_FONT_WARNING_EMITTED:
+        print(
+            "warning: no CJK-capable matplotlib font found; Chinese titles may render as missing glyphs. "
+            "Install a font such as 'Noto Sans CJK SC' or set CLAWHARNESS_MPL_FONT=/path/to/font.ttf",
+            file=sys.stderr,
+        )
+        _CJK_FONT_WARNING_EMITTED = True
+
+
+configure_matplotlib_fonts()
+
+
+def apply_plot_style(style_name: str = "seaborn-v0_8-whitegrid") -> None:
+    if plt is None:
+        return
+    plt.style.use(style_name)
+    configure_matplotlib_fonts()
 
 
 def parse_args() -> argparse.Namespace:
@@ -762,6 +856,7 @@ def plot_dataframe(df: pd.DataFrame, title: str, ylabel: str, output_path: Path)
         raise RuntimeError("matplotlib is required to render figures")
     if not has_dataframe_data(df):
         return
+    configure_matplotlib_fonts()
     fig, ax = plt.subplots(figsize=(10, 5))
     df.select_dtypes(include=["number"]).plot(kind="bar", ax=ax, rot=0, title=title)
     ax.set_ylabel(ylabel)
@@ -782,6 +877,7 @@ def plot_time_series_panels(
 ) -> None:
     if plt is None:
         raise RuntimeError("matplotlib is required to render figures")
+    configure_matplotlib_fonts()
     usable_specs = [spec for spec in panel_specs if spec.get("left") or spec.get("right")]
     if not usable_specs:
         return
@@ -856,6 +952,7 @@ def plot_latency_timeline(
 ) -> None:
     if plt is None:
         raise RuntimeError("matplotlib is required to render figures")
+    configure_matplotlib_fonts()
     points_a = load_points(csv_path_a, only_success=False)
     points_b = load_points(csv_path_b, only_success=False)
     if not points_a:
@@ -1222,6 +1319,7 @@ def plot_request_aligned_npu_activity(
 ) -> None:
     if plt is None:
         raise RuntimeError("matplotlib is required to render figures")
+    configure_matplotlib_fonts()
 
     rendered_specs: list[dict[str, Any]] = []
     for spec in run_specs:
@@ -1364,6 +1462,7 @@ def plot_actual_request_timeline(
 ) -> None:
     if plt is None:
         raise RuntimeError("matplotlib is required to render figures")
+    configure_matplotlib_fonts()
 
     line_styles = ["-", "--", "-.", ":"]
     markers = ["o", "s", "^", "D", "x", "P", "*"]
@@ -1708,7 +1807,7 @@ def build_pair_outputs(
         save_dataframe(right_node_categories_df, pair_dir / "tables" / f"{safe_slug(right_name)}_node_trace_path_categories.csv")
 
     if render_figures:
-        plt.style.use("seaborn-v0_8-whitegrid")
+        apply_plot_style("seaborn-v0_8-whitegrid")
         plot_dataframe(
             latency_overview_df,
             "End-to-End Latency",

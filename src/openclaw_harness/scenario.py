@@ -147,6 +147,7 @@ class RuntimeConfig:
     keep_container: bool = False
     repo_root: str = ""
     dockerfile: str = "Dockerfile"
+    docker_run_args: list[str] = field(default_factory=list)
     env: dict[str, str] = field(default_factory=dict)
     openclaw_config: dict[str, Any] = field(default_factory=dict)
 
@@ -279,6 +280,10 @@ def load_scenario(path: Path) -> ScenarioConfig:
         raise ValueError(
             "docker reuse requires runtime.container_port to be the OpenClaw port inside the existing container",
         )
+    if not isinstance(scenario.runtime.docker_run_args, list) or any(
+        not isinstance(arg, str) for arg in scenario.runtime.docker_run_args
+    ):
+        raise ValueError("runtime.docker_run_args must be a JSON array of strings")
     scenario.scenario_path = str(path.resolve())
     if scenario.client.task_file.strip():
         task_path = resolve_task_path(scenario.client.task_file, scenario_path=path.resolve())

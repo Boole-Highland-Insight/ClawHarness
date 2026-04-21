@@ -1,0 +1,5 @@
+scenario,rows_with_usage,output_tokens_mean,output_tps_request_mean,output_tps_session_delta_mean
+单实例串行,100,200.66,19.60532104,13.73625575
+单实例并行,100,144.12,10.21044445,5.86204169
+多实例并行,0,0.0,0.0,0.0
+多实例独占容器并行,100,107.71,9.08894059,4.52013047
