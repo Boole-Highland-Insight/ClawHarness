@@ -1,11 +1,10 @@
 from fastapi import Depends, FastAPI
 
 from .config import OpenClawSettings, get_settings
-from .models import Container, OpenClawInstance
-from .services import HarnessService
+from .control_plane.router import router as control_plane_router
 
-app = FastAPI(title="CoClaw Backend", version="0.1.0")
-service = HarnessService()
+app = FastAPI(title="CoClaw Backend", version="0.2.0")
+app.include_router(control_plane_router)
 
 
 @app.get("/healthz")
@@ -16,13 +15,3 @@ def healthz(settings: OpenClawSettings = Depends(get_settings)) -> dict[str, str
         "shared_folder_root": settings.shared_folder_root,
         "control_plane_url": str(settings.control_plane_url),
     }
-
-
-@app.get("/containers", response_model=list[Container])
-def list_containers() -> list[Container]:
-    return list(service.repository.list_containers())
-
-
-@app.get("/instances", response_model=list[OpenClawInstance])
-def list_instances() -> list[OpenClawInstance]:
-    return list(service.repository.list_instances())
