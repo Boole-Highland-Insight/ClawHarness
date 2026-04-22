@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 import sys
 from pathlib import Path
@@ -10,6 +11,9 @@ import pandas as pd
 
 import export_pair_report as pair
 import export_tri_sys_report as tri_sys
+
+
+CPU_TIMELINE_TOP_POINTS = 36
 
 
 def parse_args() -> argparse.Namespace:
@@ -65,6 +69,155 @@ def normalize_display_names(
     if len(set(display_names)) != len(display_names):
         raise ValueError(f"display labels must be unique within one report: {display_names}")
     return display_names
+
+
+def select_top_points(points: list[tuple[float, float]], limit: int = CPU_TIMELINE_TOP_POINTS) -> list[tuple[float, float]]:
+    if len(points) <= limit:
+        return points
+    ranked_points = sorted(points, key=lambda item: (-item[1], item[0]))[:limit]
+    return sorted(ranked_points, key=lambda item: item[0])
+
+
+def reduce_series_to_top_points(
+    series_list: list[dict[str, Any]],
+    limit: int = CPU_TIMELINE_TOP_POINTS,
+) -> list[dict[str, Any]]:
+    reduced: list[dict[str, Any]] = []
+    for series in series_list:
+        reduced.append(
+            {
+                **series,
+                "points": select_top_points(list(series.get("points", [])), limit=limit),
+            },
+        )
+    return reduced
+
+
+def invert_percent_series(
+    series_list: list[dict[str, Any]],
+    *,
+    max_percent: float = 100.0,
+) -> list[dict[str, Any]]:
+    transformed: list[dict[str, Any]] = []
+    for series in series_list:
+        points = []
+        for t_sec, value in list(series.get("points", [])):
+            points.append((t_sec, max(0.0, max_percent - float(value))))
+        transformed.append({**series, "points": points})
+    return transformed
+
+
+def smooth_series_preserve_edges(
+    series_list: list[dict[str, Any]],
+    *,
+    window_radius: int = 4,
+) -> list[dict[str, Any]]:
+    if window_radius <= 0:
+        return series_list
+
+    smoothed: list[dict[str, Any]] = []
+    for series in series_list:
+        points = list(series.get("points", []))
+        if len(points) <= 2:
+            smoothed.append(series)
+            continue
+
+        values = [float(value) for _, value in points]
+        new_points: list[tuple[float, float]] = []
+        last_index = len(points) - 1
+        for index, (t_sec, value) in enumerate(points):
+            if index == 0 or index == last_index:
+                new_points.append((t_sec, float(value)))
+                continue
+
+            start = max(0, index - window_radius)
+            end = min(last_index, index + window_radius)
+            window_values = values[start : end + 1]
+            new_points.append((t_sec, sum(window_values) / len(window_values)))
+
+        smoothed.append({**series, "points": new_points})
+    return smoothed
+
+
+def load_vmstat_series_from_run(
+    run_dir: Path,
+    source_field: str,
+) -> list[tuple[float, float]]:
+    vmstat_summary_path = run_dir / "vmstat.summary.json"
+    if not vmstat_summary_path.exists():
+        return []
+    payload = json.loads(vmstat_summary_path.read_text(encoding="utf-8"))
+    return load_vmstat_series_from_payload(payload, source_field)
+
+
+def load_vmstat_series_from_payload(
+    payload: dict[str, Any],
+    source_field: str,
+) -> list[tuple[float, float]]:
+    series = pair.nested_get(payload, ["time_series", source_field, "points"], [])
+    if not isinstance(series, list):
+        return []
+
+    points: list[tuple[float, float]] = []
+    for item in series:
+        if not isinstance(item, dict):
+            continue
+        t_sec = item.get("t_sec")
+        value = item.get("value")
+        if isinstance(t_sec, (int, float)) and isinstance(value, (int, float)):
+            points.append((float(t_sec), float(value)))
+    return points
+
+
+def load_vmstat_series_with_instance_fallback(
+    run_dir: Path,
+    source_field: str,
+) -> list[tuple[float, float]]:
+    top_level_points = load_vmstat_series_from_run(run_dir, source_field)
+    if top_level_points:
+        return top_level_points
+
+    instance_root = run_dir / "instances"
+    if not instance_root.exists():
+        return []
+
+    instance_payloads: list[dict[str, Any]] = []
+    for child in sorted(instance_root.iterdir()):
+        vmstat_summary_path = child / "vmstat.summary.json"
+        if not vmstat_summary_path.exists():
+            continue
+        instance_payloads.append(json.loads(vmstat_summary_path.read_text(encoding="utf-8")))
+
+    if not instance_payloads:
+        return []
+
+    buckets: dict[float, float] = {}
+    counts: dict[float, int] = {}
+    for payload in instance_payloads:
+        for t_sec, value in load_vmstat_series_from_payload(payload, source_field):
+            key = round(t_sec, 6)
+            buckets[key] = buckets.get(key, 0.0) + value
+            counts[key] = counts.get(key, 0) + 1
+
+    return [
+        (t_sec, buckets[t_sec] / counts[t_sec])
+        for t_sec in sorted(buckets)
+    ]
+
+
+def build_run_vmstat_series(
+    summary_records: list[dict[str, Any]],
+    source_field: str,
+) -> list[dict[str, Any]]:
+    series: list[dict[str, Any]] = []
+    for record in summary_records:
+        series.append(
+            {
+                "label": str(record["display_name"]),
+                "points": load_vmstat_series_with_instance_fallback(Path(record["run_dir"]), source_field),
+            },
+        )
+    return series
 
 
 def build_quartet_outputs(
@@ -181,29 +334,10 @@ def build_quartet_outputs(
             "total_p99_ms": "total_p99",
         },
     )
-    system_cpu_df = profile_df[
-        [
-            "benchmark_cpu_percent_mean",
-            "benchmark_cpu_usr_percent_mean",
-            "benchmark_cpu_system_percent_mean",
-            "benchmark_cpu_wait_percent_mean",
-            "system_cpu_user_percent_mean",
-            "system_cpu_system_percent_mean",
-            "system_cpu_wait_percent_mean",
-            "system_cpu_idle_percent_mean",
-        ]
-    ].rename(
-        columns={
-            "benchmark_cpu_percent_mean": "benchmark_pct_cpu_total",
-            "benchmark_cpu_usr_percent_mean": "benchmark_pct_cpu_usr",
-            "benchmark_cpu_system_percent_mean": "benchmark_pct_cpu_system",
-            "benchmark_cpu_wait_percent_mean": "benchmark_pct_cpu_wait",
-            "system_cpu_user_percent_mean": "system_cpu_user_pct",
-            "system_cpu_system_percent_mean": "system_cpu_system_pct",
-            "system_cpu_wait_percent_mean": "system_cpu_iowait_pct",
-            "system_cpu_idle_percent_mean": "system_cpu_idle_pct",
-        },
-    )
+    system_cpu_df = pd.DataFrame(index=profile_df.index)
+    system_cpu_df["pct_cpu_total"] = profile_df["benchmark_cpu_percent_mean"]
+    system_cpu_df["pct_cpu_user"] = profile_df["benchmark_cpu_usr_percent_mean"]
+    system_cpu_df["pct_cpu_system"] = profile_df["benchmark_cpu_system_percent_mean"]
     system_memory_df = profile_df[["benchmark_rss_kib_mean"]].rename(
         columns={"benchmark_rss_kib_mean": "rss_kib_total"},
     )
@@ -262,19 +396,9 @@ def build_quartet_outputs(
             "npu_aicore_usage_mean": "aicore_usage_pct",
         },
     )
-    token_throughput_df = profile_df[
-        [
-            "token_rows_with_usage",
-            "output_tokens_mean",
-            "output_tps_request_mean",
-            "output_tps_session_delta_mean",
-        ]
-    ].rename(
+    token_throughput_df = profile_df[["output_tps_overall"]].rename(
         columns={
-            "token_rows_with_usage": "rows_with_usage",
-            "output_tokens_mean": "output_tokens_mean",
-            "output_tps_request_mean": "output_tps_request_mean",
-            "output_tps_session_delta_mean": "output_tps_session_delta_mean",
+            "output_tps_overall": "overall_output_tps",
         },
     )
 
@@ -339,13 +463,19 @@ def build_quartet_outputs(
             "mean value",
             quad_dir / "figures" / "system_activity_metrics.png",
         )
-        if tri_sys.dataframe_has_values(token_throughput_df):
-            pair.plot_dataframe(
-                tri_sys.non_empty_columns(token_throughput_df),
-                "Token Throughput Metrics",
-                "mean value",
-                quad_dir / "figures" / "token_throughput_metrics.png",
-            )
+        pair.plot_average_request_metric_timeline(
+            run_specs=[
+                {
+                    "label": record["display_name"],
+                    "csv_path": record["run_dir"] / "latency.csv",
+                }
+                for record in summary_records
+            ],
+            title="Total Active-Request Token Throughput",
+            output_path=quad_dir / "figures" / "token_throughput_metrics.png",
+            ylabel="Total active-request token/s",
+            aggregate_mode="sum",
+        )
         if tri_sys.dataframe_has_values(npu_df):
             pair.plot_dataframe(
                 tri_sys.non_empty_columns(npu_df),
@@ -374,6 +504,7 @@ def build_quartet_outputs(
             ],
             title="Request Gantt Timeline",
             output_path=quad_dir / "figures" / "actual_request_timeline.png",
+            show_yaxis_label=False,
         )
         pair.plot_request_aligned_npu_activity(
             run_specs=[
@@ -390,73 +521,35 @@ def build_quartet_outputs(
         tri_sys.plot_time_series_panels_multi(
             panel_specs=[
                 {
-                    "subtitle": "Benchmark / Container CPU Percent (sum across instances)",
+                    "subtitle": "System CPU Total (mean across instance collectors)",
                     "ylabel": "percent",
-                    "series": tri_sys.build_aggregated_series_with_fallback(
+                    "series": smooth_series_preserve_edges(invert_percent_series(build_run_vmstat_series(
                         summary_records,
-                        [
-                            (["pidstat", "sections", "cpu", "time_series", "pct_cpu"], 1.0),
-                            (["docker_stats", "time_series", "cpu_percent_value"], 1.0),
-                        ],
-                        mode="sum",
-                    ),
-                },
-                {
-                    "subtitle": "Benchmark User CPU Percent (sum across instances)",
-                    "ylabel": "percent",
-                    "series": tri_sys.build_aggregated_series(
-                        summary_records,
-                        ["pidstat", "sections", "cpu", "time_series", "pct_usr"],
-                        mode="sum",
-                    ),
-                },
-                {
-                    "subtitle": "Benchmark System CPU Percent (sum across instances)",
-                    "ylabel": "percent",
-                    "series": tri_sys.build_aggregated_series(
-                        summary_records,
-                        ["pidstat", "sections", "cpu", "time_series", "pct_system"],
-                        mode="sum",
-                    ),
+                        "id",
+                    ))),
                 },
                 {
                     "subtitle": "System CPU User (mean across instance collectors)",
                     "ylabel": "percent",
-                    "series": tri_sys.build_aggregated_series(
-                        summary_records,
-                        ["vmstat", "metric_time_series", "us"],
-                        mode="mean",
-                    ),
+                    "series": build_run_vmstat_series(summary_records, "us"),
                 },
                 {
                     "subtitle": "System CPU System (mean across instance collectors)",
                     "ylabel": "percent",
-                    "series": tri_sys.build_aggregated_series(
-                        summary_records,
-                        ["vmstat", "metric_time_series", "sy"],
-                        mode="mean",
-                    ),
+                    "series": build_run_vmstat_series(summary_records, "sy"),
                 },
                 {
                     "subtitle": "System CPU iowait (mean across instance collectors)",
                     "ylabel": "percent",
-                    "series": tri_sys.build_aggregated_series(
-                        summary_records,
-                        ["vmstat", "metric_time_series", "wa"],
-                        mode="mean",
-                    ),
+                    "series": build_run_vmstat_series(summary_records, "wa"),
                 },
                 {
-                    "subtitle": "VM Run Queue (mean across instance collectors)",
-                    "ylabel": "processes",
-                    "series": tri_sys.build_aggregated_series(
-                        summary_records,
-                        ["vmstat", "key_time_series", "run_queue"],
-                        mode="mean",
-                    ),
+                    "subtitle": "System CPU Idle (mean across instance collectors)",
+                    "ylabel": "percent",
+                    "series": build_run_vmstat_series(summary_records, "id"),
                 },
             ],
-            title="System CPU Timeline",
+            title="System CPU Timeline (Host CPU, Data Smoothed)",
             output_path=quad_dir / "figures" / "system_cpu_timeline.png",
         )
         tri_sys.plot_time_series_panels_multi(

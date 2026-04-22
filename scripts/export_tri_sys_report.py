@@ -400,6 +400,43 @@ def build_system_profile_row(summary: dict[str, Any], run_dir: Path) -> dict[str
     analyses = get_instance_analyses(summary)
     latency = summary["latency_ms"]
     token_metrics = summary.get("token_metrics", {}) if isinstance(summary.get("token_metrics"), dict) else {}
+    run_timing = pair.compute_run_timing_metrics(summary, run_dir / "latency.csv")
+    request_window_sec = run_timing.get("request_window_sec")
+    token_rows_with_usage = token_metrics.get("rows_with_usage")
+    output_tokens_mean = pair.metric_mean({"summary": token_metrics.get("output_tokens", {})}, ["summary"])
+    output_tps_overall = None
+    if (
+        isinstance(token_rows_with_usage, (int, float))
+        and isinstance(output_tokens_mean, (int, float))
+        and isinstance(request_window_sec, (int, float))
+        and float(request_window_sec) > 0.0
+    ):
+        output_tps_overall = (float(token_rows_with_usage) * float(output_tokens_mean)) / float(request_window_sec)
+
+    benchmark_cpu_usr_percent_mean = combine_metric_means(
+        analyses,
+        ["pidstat", "sections", "cpu", "metric_summaries", "pct_usr"],
+        mode="sum",
+    )
+    if benchmark_cpu_usr_percent_mean is None:
+        benchmark_cpu_usr_percent_mean = combine_metric_means(
+            analyses,
+            ["vmstat", "metric_summaries", "us"],
+            mode="mean",
+        )
+
+    benchmark_cpu_system_percent_mean = combine_metric_means(
+        analyses,
+        ["pidstat", "sections", "cpu", "metric_summaries", "pct_system"],
+        mode="sum",
+    )
+    if benchmark_cpu_system_percent_mean is None:
+        benchmark_cpu_system_percent_mean = combine_metric_means(
+            analyses,
+            ["vmstat", "metric_summaries", "sy"],
+            mode="mean",
+        )
+
     return {
         "scenario": summary["scenario"],
         "run_dir": str(run_dir),
@@ -430,16 +467,8 @@ def build_system_profile_row(summary: dict[str, Any], run_dir: Path) -> dict[str
             ],
             mode="sum",
         ),
-        "benchmark_cpu_usr_percent_mean": combine_metric_means(
-            analyses,
-            ["pidstat", "sections", "cpu", "metric_summaries", "pct_usr"],
-            mode="sum",
-        ),
-        "benchmark_cpu_system_percent_mean": combine_metric_means(
-            analyses,
-            ["pidstat", "sections", "cpu", "metric_summaries", "pct_system"],
-            mode="sum",
-        ),
+        "benchmark_cpu_usr_percent_mean": benchmark_cpu_usr_percent_mean,
+        "benchmark_cpu_system_percent_mean": benchmark_cpu_system_percent_mean,
         "benchmark_cpu_wait_percent_mean": combine_metric_means(
             analyses,
             ["pidstat", "sections", "cpu", "metric_summaries", "pct_wait"],
@@ -557,13 +586,14 @@ def build_system_profile_row(summary: dict[str, Any], run_dir: Path) -> dict[str
             ["npu_smi", "key_metric_summaries", "aicore_usage_rate_pct"],
             mode="mean",
         ),
-        "token_rows_with_usage": token_metrics.get("rows_with_usage"),
-        "output_tokens_mean": pair.metric_mean({"summary": token_metrics.get("output_tokens", {})}, ["summary"]),
+        "token_rows_with_usage": token_rows_with_usage,
+        "output_tokens_mean": output_tokens_mean,
         "output_tps_request_mean": pair.metric_mean({"summary": token_metrics.get("output_tps_request", {})}, ["summary"]),
         "output_tps_session_delta_mean": pair.metric_mean(
             {"summary": token_metrics.get("output_tps_session_delta", {})},
             ["summary"],
         ),
+        "output_tps_overall": output_tps_overall,
     }
 
 
@@ -788,22 +818,12 @@ def build_triplet_outputs(
             "benchmark_cpu_percent_mean",
             "benchmark_cpu_usr_percent_mean",
             "benchmark_cpu_system_percent_mean",
-            "benchmark_cpu_wait_percent_mean",
-            "system_cpu_user_percent_mean",
-            "system_cpu_system_percent_mean",
-            "system_cpu_wait_percent_mean",
-            "system_cpu_idle_percent_mean",
         ]
     ].rename(
         columns={
-            "benchmark_cpu_percent_mean": "benchmark_pct_cpu_total",
-            "benchmark_cpu_usr_percent_mean": "benchmark_pct_cpu_usr",
-            "benchmark_cpu_system_percent_mean": "benchmark_pct_cpu_system",
-            "benchmark_cpu_wait_percent_mean": "benchmark_pct_cpu_wait",
-            "system_cpu_user_percent_mean": "system_cpu_user_pct",
-            "system_cpu_system_percent_mean": "system_cpu_system_pct",
-            "system_cpu_wait_percent_mean": "system_cpu_iowait_pct",
-            "system_cpu_idle_percent_mean": "system_cpu_idle_pct",
+            "benchmark_cpu_percent_mean": "pct_cpu_total",
+            "benchmark_cpu_usr_percent_mean": "pct_cpu_usr",
+            "benchmark_cpu_system_percent_mean": "pct_cpu_system",
         },
     )
     system_memory_df = profile_df[["benchmark_rss_kib_mean"]].rename(
@@ -864,19 +884,9 @@ def build_triplet_outputs(
             "npu_aicore_usage_mean": "aicore_usage_pct",
         },
     )
-    token_throughput_df = profile_df[
-        [
-            "token_rows_with_usage",
-            "output_tokens_mean",
-            "output_tps_request_mean",
-            "output_tps_session_delta_mean",
-        ]
-    ].rename(
+    token_throughput_df = profile_df[["output_tps_overall"]].rename(
         columns={
-            "token_rows_with_usage": "rows_with_usage",
-            "output_tokens_mean": "output_tokens_mean",
-            "output_tps_request_mean": "output_tps_request_mean",
-            "output_tps_session_delta_mean": "output_tps_session_delta_mean",
+            "output_tps_overall": "overall_output_tps",
         },
     )
 
@@ -941,13 +951,19 @@ def build_triplet_outputs(
             "mean value",
             tri_dir / "figures" / "system_activity_metrics.png",
         )
-        if dataframe_has_values(token_throughput_df):
-            pair.plot_dataframe(
-                non_empty_columns(token_throughput_df),
-                "Token Throughput Metrics",
-                "mean value",
-                tri_dir / "figures" / "token_throughput_metrics.png",
-            )
+        pair.plot_average_request_metric_timeline(
+            run_specs=[
+                {
+                    "label": record["display_name"],
+                    "csv_path": record["run_dir"] / "latency.csv",
+                }
+                for record in summary_records
+            ],
+            title="Total Active-Request Token Throughput",
+            output_path=tri_dir / "figures" / "token_throughput_metrics.png",
+            ylabel="Total active-request token/s",
+            aggregate_mode="sum",
+        )
         if dataframe_has_values(npu_df):
             pair.plot_dataframe(
                 non_empty_columns(npu_df),

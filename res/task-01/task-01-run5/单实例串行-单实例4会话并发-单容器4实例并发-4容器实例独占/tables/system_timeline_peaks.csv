@@ -1,0 +1,5 @@
+scenario,benchmark_cpu_peak,benchmark_cpu_peak_t_sec,benchmark_rss_peak_kib,benchmark_rss_peak_t_sec,system_disk_pct_util_peak,system_disk_pct_util_peak_t_sec,system_disk_w_await_peak,system_disk_w_await_peak_t_sec,system_interrupts_peak,system_interrupts_peak_t_sec,system_context_switches_peak,system_context_switches_peak_t_sec,system_run_queue_peak,system_run_queue_peak_t_sec,npu_utilization_peak,npu_utilization_peak_t_sec,npu_aicore_peak,npu_aicore_peak_t_sec,npu_hbm_peak,npu_hbm_peak_t_sec
+单实例串行,187.0,93.0,918832.0,21.0,19.6,35.0,2.12,559.0,1152746.0,82.0,1786788.0,82.0,105.0,877.0,94.0625,704.451031,34.875,966.791425,94.0,0.0
+单实例4会话并发,168.0,129.0,952960.0,229.0,10.8,54.0,5.23,3.0,1053689.0,432.0,1654277.0,432.0,72.0,157.0,96.375,375.020043,53.125,121.325566,95.0,0.0
+单容器4实例并发,494.88,10.114917,3770679.296,22.776175,12.8,12.0,4.79,13.0,1114377.0,389.0,1787602.0,389.0,72.0,388.0,96.6875,253.383735,52.375,37.371809,97.0,112.937631
+4容器实例独占,469.0,2.0,3358476.0,15.0,5.6,8.0,3.8525,8.0,1020849.75,382.0,1582224.75,382.0,60.0,398.0,96.9375,142.388737,53.375,122.866955,95.0,0.0

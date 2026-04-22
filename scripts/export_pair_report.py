@@ -1110,6 +1110,68 @@ def load_request_activity_events(csv_path: Path) -> tuple[datetime | None, list[
     return (first_request_started_at, events)
 
 
+def load_average_request_metric_timeline_points(
+    csv_path: Path,
+    *,
+    metric_field: str = "output_tps_request",
+    aggregate_mode: str = "mean",
+) -> list[tuple[float, float]]:
+    rows: list[tuple[datetime, datetime, float]] = []
+    with csv_path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            started_at = parse_iso_datetime(row.get("started_at"))
+            finished_at = parse_iso_datetime(row.get("finished_at")) or started_at
+            metric_value = parse_csv_float(row.get(metric_field))
+            if started_at is None or metric_value is None:
+                continue
+            if finished_at < started_at:
+                finished_at = started_at
+            rows.append((started_at, finished_at, metric_value))
+
+    if not rows:
+        return []
+
+    origin = min(started_at for started_at, _, _ in rows)
+    events: list[tuple[float, float, int]] = []
+    for started_at, finished_at, metric_value in rows:
+        start_sec = (started_at - origin).total_seconds()
+        finish_sec = (finished_at - origin).total_seconds()
+        events.append((start_sec, metric_value, 1))
+        events.append((finish_sec, metric_value, -1))
+    events.sort(key=lambda item: (item[0], -item[2]))
+
+    points: list[tuple[float, float]] = []
+    active_metric_sum = 0.0
+    active_count = 0
+    index = 0
+    while index < len(events):
+        t_sec = events[index][0]
+        if aggregate_mode == "sum":
+            current_value = active_metric_sum if active_count > 0 else 0.0
+        elif aggregate_mode == "mean":
+            current_value = (active_metric_sum / active_count) if active_count > 0 else 0.0
+        else:
+            raise ValueError(f"unsupported aggregate_mode: {aggregate_mode}")
+        if not points or not math.isclose(points[-1][0], t_sec, abs_tol=1e-9):
+            points.append((t_sec, current_value))
+        metric_delta = 0.0
+        count_delta = 0
+        while index < len(events) and math.isclose(events[index][0], t_sec, abs_tol=1e-9):
+            metric_delta += events[index][1] * events[index][2]
+            count_delta += events[index][2]
+            index += 1
+        active_metric_sum += metric_delta
+        active_count += count_delta
+        if aggregate_mode == "sum":
+            next_value = active_metric_sum if active_count > 0 else 0.0
+        else:
+            next_value = (active_metric_sum / active_count) if active_count > 0 else 0.0
+        points.append((t_sec, next_value))
+
+    return points
+
+
 def load_request_gantt_bars(csv_path: Path) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     with csv_path.open("r", encoding="utf-8", newline="") as handle:
@@ -1161,6 +1223,7 @@ def plot_request_gantt_multi(
     run_specs: list[dict[str, Any]],
     title: str,
     output_path: Path,
+    show_yaxis_label: bool = True,
 ) -> None:
     if plt is None:
         raise RuntimeError("matplotlib is required to render figures")
@@ -1200,6 +1263,7 @@ def plot_request_gantt_multi(
         color = colors[index % len(colors)]
         bars = spec["bars"]
         y_positions = list(range(len(bars)))
+        show_y_ticks = len(bars) <= 20
         ax.barh(
             y_positions,
             [bar["duration_sec"] for bar in bars],
@@ -1211,9 +1275,15 @@ def plot_request_gantt_multi(
         )
         ax.axvline(spec["run_finish_sec"], color=color, linestyle="--", linewidth=1.2, alpha=0.9)
         ax.set_title(f"{spec['label']} (run finish {spec['run_finish_sec']:.1f}s)")
-        ax.set_ylabel("request")
-        ax.set_yticks(y_positions)
-        ax.set_yticklabels([str(bar["label"]) for bar in bars], fontsize=8)
+        if show_yaxis_label:
+            ax.set_ylabel("request")
+        else:
+            ax.set_ylabel("")
+        if show_y_ticks:
+            ax.set_yticks(y_positions)
+            ax.set_yticklabels([str(bar["label"]) for bar in bars], fontsize=8)
+        else:
+            ax.set_yticks([])
         ax.invert_yaxis()
         ax.grid(True, axis="x", alpha=0.2)
 
@@ -1492,6 +1562,66 @@ def plot_actual_request_timeline(
     ax.set_xlabel("Elapsed wall-clock time since first request start (s)")
     ax.set_ylabel("Per-request actual elapsed (ms)")
     ax.set_title(title)
+    ax.grid(True, alpha=0.25)
+    ax.legend()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_average_request_metric_timeline(
+    *,
+    run_specs: list[dict[str, Any]],
+    title: str,
+    output_path: Path,
+    metric_field: str = "output_tps_request",
+    ylabel: str = "Average active-request token/s",
+    aggregate_mode: str = "mean",
+) -> None:
+    if plt is None:
+        raise RuntimeError("matplotlib is required to render figures")
+    configure_matplotlib_fonts()
+
+    line_styles = ["-", "--", "-.", ":"]
+    smoothing_window = 5
+    has_points = False
+    fig, ax = plt.subplots(figsize=(14, 5.5), constrained_layout=True)
+
+    for index, spec in enumerate(run_specs):
+        points = load_average_request_metric_timeline_points(
+            Path(spec["csv_path"]),
+            metric_field=metric_field,
+            aggregate_mode=aggregate_mode,
+        )
+        if not points:
+            continue
+        positive_points = [(x, y) for x, y in points if y > 0]
+        if not positive_points:
+            continue
+        smoothed_y: list[float] = []
+        y_values = [y for _, y in positive_points]
+        for point_index in range(len(y_values)):
+            start_index = max(0, point_index - smoothing_window + 1)
+            window_values = y_values[start_index : point_index + 1]
+            smoothed_y.append(sum(window_values) / len(window_values))
+        has_points = True
+        ax.plot(
+            [x for x, _ in positive_points],
+            smoothed_y,
+            linewidth=1.6,
+            linestyle=line_styles[index % len(line_styles)],
+            alpha=0.9,
+            label=str(spec["label"]),
+        )
+
+    if not has_points:
+        plt.close(fig)
+        return
+
+    ax.set_xlabel("Elapsed wall-clock time since first request start (s)")
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
+    ax.set_ylim(bottom=0)
     ax.grid(True, alpha=0.25)
     ax.legend()
     output_path.parent.mkdir(parents=True, exist_ok=True)

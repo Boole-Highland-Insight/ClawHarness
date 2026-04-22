@@ -1575,16 +1575,8 @@ def parse_session_usage_artifacts(
     output_dir: Path,
     rows: list[dict[str, Any]],
 ) -> dict[str, Any] | None:
-    sessions_dir = output_dir / "runtime" / "config" / "agents" / "main" / "sessions"
-    sessions_index_path = sessions_dir / "sessions.json"
-    if not sessions_index_path.exists() or not rows:
-        return None
-
-    try:
-        sessions_index = json.loads(sessions_index_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(sessions_index, dict):
+    session_dirs = collect_session_usage_dirs(output_dir)
+    if not session_dirs or not rows:
         return None
 
     rows_by_session_key: dict[str, list[dict[str, Any]]] = {}
@@ -1597,28 +1589,40 @@ def parse_session_usage_artifacts(
 
     events_by_session_key: dict[str, list[dict[str, Any]]] = {}
     assistant_messages = 0
-    for indexed_session_key, session_meta in sessions_index.items():
-        if not isinstance(indexed_session_key, str) or not indexed_session_key:
+    loaded_session_indexes: list[str] = []
+    for sessions_dir in session_dirs:
+        sessions_index_path = sessions_dir / "sessions.json"
+        if not sessions_index_path.exists():
             continue
-        session_key = indexed_session_key.split(":", 2)[-1]
-        if session_key not in rows_by_session_key:
+        try:
+            sessions_index = json.loads(sessions_index_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
             continue
-        if not isinstance(session_meta, dict):
+        if not isinstance(sessions_index, dict):
             continue
-        session_id = session_meta.get("sessionId")
-        session_file = session_meta.get("sessionFile")
-        session_path = sessions_dir / f"{session_id}.jsonl"
-        if isinstance(session_file, str):
-            candidate = Path(session_file)
-            if candidate.name:
-                session_path = sessions_dir / candidate.name
-        if not session_path.exists():
-            continue
-        events = _parse_session_usage_events(session_path=session_path, session_id=str(session_id or ""))
-        if not events:
-            continue
-        assistant_messages += len(events)
-        events_by_session_key[session_key] = events
+        loaded_session_indexes.append(str(sessions_index_path))
+        for indexed_session_key, session_meta in sessions_index.items():
+            if not isinstance(indexed_session_key, str) or not indexed_session_key:
+                continue
+            session_key = indexed_session_key.split(":", 2)[-1]
+            if session_key not in rows_by_session_key:
+                continue
+            if not isinstance(session_meta, dict):
+                continue
+            session_id = session_meta.get("sessionId")
+            session_file = session_meta.get("sessionFile")
+            session_path = sessions_dir / f"{session_id}.jsonl"
+            if isinstance(session_file, str):
+                candidate = Path(session_file)
+                if candidate.name:
+                    session_path = sessions_dir / candidate.name
+            if not session_path.exists():
+                continue
+            events = _parse_session_usage_events(session_path=session_path, session_id=str(session_id or ""))
+            if not events:
+                continue
+            assistant_messages += len(events)
+            events_by_session_key[session_key] = events
 
     if not events_by_session_key:
         return None
@@ -1711,7 +1715,8 @@ def parse_session_usage_artifacts(
                 rows_with_session_delta_tps += 1
 
     return {
-        "sessions_index": str(sessions_index_path),
+        "sessions_index": loaded_session_indexes[0],
+        "sessions_indexes": loaded_session_indexes,
         "session_files": len(events_by_session_key),
         "assistant_messages": assistant_messages,
         "matched_rows": matched_rows,
@@ -1721,6 +1726,25 @@ def parse_session_usage_artifacts(
         "rows_with_request_tps": rows_with_request_tps,
         "rows_with_session_delta_tps": rows_with_session_delta_tps,
     }
+
+
+def collect_session_usage_dirs(output_dir: Path) -> list[Path]:
+    runtime_config_dir = output_dir / "runtime" / "config"
+    candidate_dirs: list[Path] = [runtime_config_dir / "agents" / "main" / "sessions"]
+    if runtime_config_dir.exists():
+        for child in sorted(runtime_config_dir.iterdir()):
+            if not child.is_dir() or not child.name.startswith("openclaw-"):
+                continue
+            candidate_dirs.append(child / "agents" / "main" / "sessions")
+
+    deduped_dirs: list[Path] = []
+    seen: set[Path] = set()
+    for path in candidate_dirs:
+        if path in seen or not path.exists():
+            continue
+        seen.add(path)
+        deduped_dirs.append(path)
+    return deduped_dirs
 
 
 def _parse_session_usage_events(*, session_path: Path, session_id: str) -> list[dict[str, Any]]:
