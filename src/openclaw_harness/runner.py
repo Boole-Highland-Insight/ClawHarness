@@ -27,14 +27,32 @@ def resolve_session_key(
     scenario: ScenarioConfig,
     worker_id: int,
     request_index: int,
+    request_id: int | None = None,
+    session_slot: int | None = None,
 ) -> str:
     prefix = scenario.client.session_prefix
     mode = scenario.client.session_mode
+    slot = session_slot if session_slot is not None else worker_id
+    request_token = request_id if request_id is not None else request_index
     if mode == "shared":
         return f"{prefix}-shared"
     if mode == "per_request":
-        return f"{prefix}-w{worker_id}-r{request_index}"
-    return f"{prefix}-w{worker_id}"
+        return f"{prefix}-w{slot}-r{request_token}"
+    return f"{prefix}-w{slot}"
+
+
+def resolve_total_requests(scenario: ScenarioConfig) -> int:
+    if scenario.load.total_requests > 0:
+        return scenario.load.total_requests
+    return scenario.load.concurrency * scenario.load.requests_per_worker
+
+
+def resolve_connect_parallelism(scenario: ScenarioConfig, *, default_parallelism: int) -> int:
+    if scenario.load.connect_concurrency > 0:
+        return scenario.load.connect_concurrency
+    if scenario.load.dispatch_mode == "burst":
+        return max(1, resolve_total_requests(scenario))
+    return max(1, default_parallelism)
 
 
 @dataclass(slots=True)
@@ -61,7 +79,12 @@ async def execute_load(
     instance_index: int = 0,
 ) -> list[dict[str, object]]:
     records: list[dict[str, object]] = []
-    max_parallel_connects = min(4, max(1, scenario.load.concurrency))
+    total_requests = resolve_total_requests(scenario)
+    default_connect_parallelism = min(4, max(1, scenario.load.concurrency))
+    max_parallel_connects = resolve_connect_parallelism(
+        scenario,
+        default_parallelism=default_connect_parallelism,
+    )
     connect_gate = asyncio.Semaphore(max_parallel_connects)
 
     async def worker(worker_id: int) -> None:
@@ -168,8 +191,129 @@ async def execute_load(
         finally:
             await client.close()
 
-    tasks = [asyncio.create_task(worker(worker_id)) for worker_id in range(scenario.load.concurrency)]
-    await asyncio.gather(*tasks)
+    if scenario.load.dispatch_mode == "worker_loop":
+        tasks = [asyncio.create_task(worker(worker_id)) for worker_id in range(scenario.load.concurrency)]
+        await asyncio.gather(*tasks)
+        return records
+
+    if scenario.load.dispatch_mode != "burst":
+        raise ValueError(f"unsupported load.dispatch_mode={scenario.load.dispatch_mode!r}")
+
+    # Burst mode: fire all requests from a single launch barrier, while keeping
+    # optional inflight limiting independent from session pool sizing.
+    launch_barrier = asyncio.Event()
+    max_in_flight = scenario.load.max_in_flight if scenario.load.max_in_flight > 0 else total_requests
+    inflight_gate = asyncio.Semaphore(max(1, max_in_flight))
+    session_slot_count = scenario.client.session_pool_size if scenario.client.session_pool_size > 0 else max(1, scenario.load.concurrency)
+
+    async def burst_request(request_id: int) -> None:
+        await launch_barrier.wait()
+        async with inflight_gate:
+            session_slot = request_id % session_slot_count
+            openclaw_index = request_id % len(urls)
+            url = urls[openclaw_index]
+            client = GatewayClient(
+                url=url,
+                token=token,
+                role=scenario.client.role,
+                instance_id=(
+                    f"{slugify(scenario.name)}-i{instance_index:02d}-oc{openclaw_index:02d}-"
+                    f"b{request_id}-{uuid4().hex[:8]}"
+                ),
+                device_identity=device_identity,
+            )
+            connect_latency_ms = 0.0
+            try:
+                async with connect_gate:
+                    connect_latency_ms = await client.connect()
+
+                session_key = resolve_session_key(
+                    scenario=scenario,
+                    worker_id=session_slot,
+                    request_index=request_id,
+                    request_id=request_id,
+                    session_slot=session_slot,
+                )
+                run_id = str(uuid4())
+                started_at = iso_now()
+                error_text = ""
+                send_status = ""
+                wait_status = ""
+                history_messages = 0
+                send_latency_ms = 0.0
+                wait_latency_ms = 0.0
+                history_latency_ms = 0.0
+                total_started = perf_counter_ns()
+                success = False
+                try:
+                    send_started = perf_counter_ns()
+                    send_response = await client.send_chat(
+                        session_key=session_key,
+                        message=scenario.client.effective_message(),
+                        run_id=run_id,
+                        timeout_ms=scenario.client.send_timeout_ms,
+                    )
+                    send_latency_ms = (perf_counter_ns() - send_started) / 1_000_000.0
+                    send_status = str((send_response.payload or {}).get("status", ""))
+                    if not send_response.ok:
+                        raise RuntimeError(f"chat.send failed: {send_response.error}")
+
+                    wait_started = perf_counter_ns()
+                    wait_response = await client.wait_for_agent(
+                        run_id=run_id,
+                        timeout_ms=scenario.client.wait_timeout_ms,
+                    )
+                    wait_latency_ms = (perf_counter_ns() - wait_started) / 1_000_000.0
+                    wait_status = str((wait_response.payload or {}).get("status", ""))
+                    if not wait_response.ok:
+                        raise RuntimeError(f"agent.wait failed: {wait_response.error}")
+
+                    history_started = perf_counter_ns()
+                    history_response = await client.load_history(
+                        session_key=session_key,
+                        limit=scenario.client.history_limit,
+                    )
+                    history_latency_ms = (perf_counter_ns() - history_started) / 1_000_000.0
+                    history_messages = len((history_response.payload or {}).get("messages", []) or [])
+                    if not history_response.ok:
+                        raise RuntimeError(f"chat.history failed: {history_response.error}")
+                    success = bool(send_response.ok and wait_response.ok and history_response.ok)
+                except Exception as exc:
+                    error_text = str(exc)
+                finished_at = iso_now()
+                total_latency_ms = (perf_counter_ns() - total_started) / 1_000_000.0
+                records.append(
+                    {
+                        "scenario": scenario.name,
+                        "instance_index": instance_index,
+                        "openclaw_index": openclaw_index,
+                        "task_id": scenario.client.task_id,
+                        "task_name": scenario.client.task_name,
+                        "worker_id": session_slot,
+                        "request_index": request_id,
+                        "session_key": session_key,
+                        "run_id": run_id,
+                        "success": success,
+                        "connect_latency_ms": round(connect_latency_ms, 3),
+                        "send_latency_ms": round(send_latency_ms, 3),
+                        "wait_latency_ms": round(wait_latency_ms, 3),
+                        "history_latency_ms": round(history_latency_ms, 3),
+                        "total_latency_ms": round(total_latency_ms, 3),
+                        "send_status": send_status,
+                        "wait_status": wait_status,
+                        "history_messages": history_messages,
+                        "gateway_url": url,
+                        "started_at": started_at,
+                        "finished_at": finished_at,
+                        "error": error_text,
+                    },
+                )
+            finally:
+                await client.close()
+
+    burst_tasks = [asyncio.create_task(burst_request(request_id)) for request_id in range(total_requests)]
+    launch_barrier.set()
+    await asyncio.gather(*burst_tasks)
     return records
 
 

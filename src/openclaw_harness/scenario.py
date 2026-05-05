@@ -9,6 +9,7 @@ from .task import load_task, resolve_task_path
 
 
 SESSION_MODES = ("per_worker", "per_request", "shared")
+DISPATCH_MODES = ("worker_loop", "burst")
 
 
 @dataclass(slots=True)
@@ -164,6 +165,7 @@ class ClientConfig:
     resolved_prompt: str = ""
     session_prefix: str = "bench"
     session_mode: Literal["per_worker", "per_request", "shared"] = "per_worker"
+    session_pool_size: int = 0
     history_limit: int = 20
     wait_timeout_ms: int = 15000
     send_timeout_ms: int = 15000
@@ -174,10 +176,14 @@ class ClientConfig:
 
 @dataclass(slots=True)
 class LoadConfig:
+    dispatch_mode: Literal["worker_loop", "burst"] = "worker_loop"
     concurrency: int = 1
     requests_per_worker: int = 1
+    total_requests: int = 0
     worker_stagger_ms: int = 0
     request_pause_ms: int = 0
+    max_in_flight: int = 0
+    connect_concurrency: int = 4
 
 
 @dataclass(slots=True)
@@ -227,6 +233,26 @@ def load_scenario(path: Path) -> ScenarioConfig:
         raise ValueError(
             f"invalid session_mode={scenario.client.session_mode!r}; expected one of {SESSION_MODES}",
         )
+    if scenario.load.dispatch_mode not in DISPATCH_MODES:
+        raise ValueError(
+            f"invalid dispatch_mode={scenario.load.dispatch_mode!r}; expected one of {DISPATCH_MODES}",
+        )
+    if scenario.load.concurrency <= 0:
+        raise ValueError("load.concurrency must be >= 1")
+    if scenario.load.requests_per_worker <= 0:
+        raise ValueError("load.requests_per_worker must be >= 1")
+    if scenario.load.total_requests < 0:
+        raise ValueError("load.total_requests must be >= 0")
+    if scenario.load.worker_stagger_ms < 0:
+        raise ValueError("load.worker_stagger_ms must be >= 0")
+    if scenario.load.request_pause_ms < 0:
+        raise ValueError("load.request_pause_ms must be >= 0")
+    if scenario.load.max_in_flight < 0:
+        raise ValueError("load.max_in_flight must be >= 0")
+    if scenario.load.connect_concurrency < 0:
+        raise ValueError("load.connect_concurrency must be >= 0")
+    if scenario.client.session_pool_size < 0:
+        raise ValueError("client.session_pool_size must be >= 0")
     if scenario.runtime.kind not in {"docker", "host_direct"}:
         raise ValueError(
             f"invalid runtime.kind={scenario.runtime.kind!r}; expected 'docker' or 'host_direct'",

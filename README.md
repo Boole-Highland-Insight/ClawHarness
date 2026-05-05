@@ -119,7 +119,27 @@ VPS 场景模板：
 python3 -m openclaw_harness run --scenario scenarios/vps_host_direct_single.json --output-root out
 python3 -m openclaw_harness run --scenario scenarios/vps_docker_single.json --output-root out
 python3 -m openclaw_harness run --scenario scenarios/vllm/vps_docker_single_multi_openclaw_smoke.json --output-root out/smoke_multi_openclaw
+python3 -m openclaw_harness run --scenario scenarios/vllm/vps_docker_burst_task_01_100_session10.json --output-root out/burst_100
 ```
+
+`dispatch_mode = burst` 用于“同一时刻发压”。
+
+- `load.total_requests` 控制总请求数（例如 100）
+- `load.max_in_flight` 控制最大在途请求数；设为 100 即尽量同时放出
+- `client.session_pool_size` 控制会话并行度，不再和发压并发耦合
+- `client.session_mode = per_worker` 时，会按 `session_pool_size` 复用会话
+
+例如 `scenarios/vllm/vps_docker_burst_task_01_100_session10.json` 的语义是：
+
+- 一次运行总共发 100 个请求
+- 尽量同时在途（`max_in_flight = 100`）
+- 会话池大小固定为 10（`session_pool_size = 10`）
+
+如果要对比“100 会话并行”和“串行共享会话”，只改 session 配置即可，发压方式不变：
+
+- 100 会话并行：`session_mode = per_worker` + `session_pool_size = 100`
+- 10 会话并行：`session_mode = per_worker` + `session_pool_size = 10`
+- 共享单会话串行排队：`session_mode = shared`
 
 `scenarios/vllm/vps_docker_single_multi_openclaw_smoke.json` 是单容器多 OpenClaw 的最小示例：
 
