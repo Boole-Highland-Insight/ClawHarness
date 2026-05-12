@@ -1,7 +1,6 @@
 .venv/
 .deps/
-.state/
-out/
+out/*
 out-log/
 res/*
 !res/task-01/
