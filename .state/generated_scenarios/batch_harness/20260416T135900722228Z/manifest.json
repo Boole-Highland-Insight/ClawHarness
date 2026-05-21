@@ -1,0 +1,726 @@
+{
+  "config_path": "/root/client-harness/scripts/batch_run.json",
+  "template_scenario": "/root/client-harness/scenarios/vllm/vps_docker_single_light.json",
+  "runs": [
+    {
+      "index": 1,
+      "client_key": "task-00-context-inventory",
+      "task_bucket": "task-00",
+      "run_key": "single-20",
+      "override_key": "worker",
+      "generated_path": "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/01-task-00-context-inventory-single-20-worker.json",
+      "scenario_name": "vps-docker-qwen3-32b8x2-single-20-worker",
+      "session_prefix": "vps-docker-qwen3-32b8x2-single-20-worker",
+      "task_output_root": "/root/client-harness/out/data/batch_run_1/task-00",
+      "overrides": {
+        "client.message": "",
+        "client.task_file": "/root/client-harness/tasks/task_00_context_inventory.md",
+        "runtime.instance_num": 1,
+        "load.concurrency": 1,
+        "load.requests_per_worker": 20,
+        "load.worker_stagger_ms": 0,
+        "client.session_mode": "per_worker"
+      },
+      "command": [
+        "python3",
+        "-m",
+        "openclaw_harness",
+        "run",
+        "--scenario",
+        "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/01-task-00-context-inventory-single-20-worker.json",
+        "--output-root",
+        "/root/client-harness/out/data/batch_run_1/task-00"
+      ]
+    },
+    {
+      "index": 2,
+      "client_key": "task-00-context-inventory",
+      "task_bucket": "task-00",
+      "run_key": "single-20",
+      "override_key": "request",
+      "generated_path": "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/02-task-00-context-inventory-single-20-request.json",
+      "scenario_name": "vps-docker-qwen3-32b8x2-single-20-request",
+      "session_prefix": "vps-docker-qwen3-32b8x2-single-20-request",
+      "task_output_root": "/root/client-harness/out/data/batch_run_1/task-00",
+      "overrides": {
+        "client.message": "",
+        "client.task_file": "/root/client-harness/tasks/task_00_context_inventory.md",
+        "runtime.instance_num": 1,
+        "load.concurrency": 1,
+        "load.requests_per_worker": 20,
+        "load.worker_stagger_ms": 0,
+        "client.session_mode": "per_request"
+      },
+      "command": [
+        "python3",
+        "-m",
+        "openclaw_harness",
+        "run",
+        "--scenario",
+        "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/02-task-00-context-inventory-single-20-request.json",
+        "--output-root",
+        "/root/client-harness/out/data/batch_run_1/task-00"
+      ]
+    },
+    {
+      "index": 3,
+      "client_key": "task-00-context-inventory",
+      "task_bucket": "task-00",
+      "run_key": "multi-5x4w-stag150",
+      "override_key": "worker",
+      "generated_path": "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/03-task-00-context-inventory-multi-5x4w-stag150-worker.json",
+      "scenario_name": "vps-docker-qwen3-32b8x2-multi-5x4w-stag150-worker",
+      "session_prefix": "vps-docker-qwen3-32b8x2-multi-5x4w-stag150-worker",
+      "task_output_root": "/root/client-harness/out/data/batch_run_1/task-00",
+      "overrides": {
+        "client.message": "",
+        "client.task_file": "/root/client-harness/tasks/task_00_context_inventory.md",
+        "runtime.instance_num": 1,
+        "load.concurrency": 4,
+        "load.requests_per_worker": 5,
+        "load.worker_stagger_ms": 150,
+        "client.session_mode": "per_worker"
+      },
+      "command": [
+        "python3",
+        "-m",
+        "openclaw_harness",
+        "run",
+        "--scenario",
+        "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/03-task-00-context-inventory-multi-5x4w-stag150-worker.json",
+        "--output-root",
+        "/root/client-harness/out/data/batch_run_1/task-00"
+      ]
+    },
+    {
+      "index": 4,
+      "client_key": "task-00-context-inventory",
+      "task_bucket": "task-00",
+      "run_key": "multi-5x4w-stag150",
+      "override_key": "request",
+      "generated_path": "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/04-task-00-context-inventory-multi-5x4w-stag150-request.json",
+      "scenario_name": "vps-docker-qwen3-32b8x2-multi-5x4w-stag150-request",
+      "session_prefix": "vps-docker-qwen3-32b8x2-multi-5x4w-stag150-request",
+      "task_output_root": "/root/client-harness/out/data/batch_run_1/task-00",
+      "overrides": {
+        "client.message": "",
+        "client.task_file": "/root/client-harness/tasks/task_00_context_inventory.md",
+        "runtime.instance_num": 1,
+        "load.concurrency": 4,
+        "load.requests_per_worker": 5,
+        "load.worker_stagger_ms": 150,
+        "client.session_mode": "per_request"
+      },
+      "command": [
+        "python3",
+        "-m",
+        "openclaw_harness",
+        "run",
+        "--scenario",
+        "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/04-task-00-context-inventory-multi-5x4w-stag150-request.json",
+        "--output-root",
+        "/root/client-harness/out/data/batch_run_1/task-00"
+      ]
+    },
+    {
+      "index": 5,
+      "client_key": "task-00-context-inventory",
+      "task_bucket": "task-00",
+      "run_key": "multi-5x4w-stag300",
+      "override_key": "worker",
+      "generated_path": "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/05-task-00-context-inventory-multi-5x4w-stag300-worker.json",
+      "scenario_name": "vps-docker-qwen3-32b8x2-multi-5x4w-stag300-worker",
+      "session_prefix": "vps-docker-qwen3-32b8x2-multi-5x4w-stag300-worker",
+      "task_output_root": "/root/client-harness/out/data/batch_run_1/task-00",
+      "overrides": {
+        "client.message": "",
+        "client.task_file": "/root/client-harness/tasks/task_00_context_inventory.md",
+        "runtime.instance_num": 1,
+        "load.concurrency": 4,
+        "load.requests_per_worker": 5,
+        "load.worker_stagger_ms": 300,
+        "client.session_mode": "per_worker"
+      },
+      "command": [
+        "python3",
+        "-m",
+        "openclaw_harness",
+        "run",
+        "--scenario",
+        "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/05-task-00-context-inventory-multi-5x4w-stag300-worker.json",
+        "--output-root",
+        "/root/client-harness/out/data/batch_run_1/task-00"
+      ]
+    },
+    {
+      "index": 6,
+      "client_key": "task-00-context-inventory",
+      "task_bucket": "task-00",
+      "run_key": "multi-5x4w-stag300",
+      "override_key": "request",
+      "generated_path": "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/06-task-00-context-inventory-multi-5x4w-stag300-request.json",
+      "scenario_name": "vps-docker-qwen3-32b8x2-multi-5x4w-stag300-request",
+      "session_prefix": "vps-docker-qwen3-32b8x2-multi-5x4w-stag300-request",
+      "task_output_root": "/root/client-harness/out/data/batch_run_1/task-00",
+      "overrides": {
+        "client.message": "",
+        "client.task_file": "/root/client-harness/tasks/task_00_context_inventory.md",
+        "runtime.instance_num": 1,
+        "load.concurrency": 4,
+        "load.requests_per_worker": 5,
+        "load.worker_stagger_ms": 300,
+        "client.session_mode": "per_request"
+      },
+      "command": [
+        "python3",
+        "-m",
+        "openclaw_harness",
+        "run",
+        "--scenario",
+        "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/06-task-00-context-inventory-multi-5x4w-stag300-request.json",
+        "--output-root",
+        "/root/client-harness/out/data/batch_run_1/task-00"
+      ]
+    },
+    {
+      "index": 7,
+      "client_key": "task-00-context-inventory",
+      "task_bucket": "task-00",
+      "run_key": "multi-5x4w-stag500",
+      "override_key": "worker",
+      "generated_path": "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/07-task-00-context-inventory-multi-5x4w-stag500-worker.json",
+      "scenario_name": "vps-docker-qwen3-32b8x2-multi-5x4w-stag500-worker",
+      "session_prefix": "vps-docker-qwen3-32b8x2-multi-5x4w-stag500-worker",
+      "task_output_root": "/root/client-harness/out/data/batch_run_1/task-00",
+      "overrides": {
+        "client.message": "",
+        "client.task_file": "/root/client-harness/tasks/task_00_context_inventory.md",
+        "runtime.instance_num": 1,
+        "load.concurrency": 4,
+        "load.requests_per_worker": 5,
+        "load.worker_stagger_ms": 500,
+        "client.session_mode": "per_worker"
+      },
+      "command": [
+        "python3",
+        "-m",
+        "openclaw_harness",
+        "run",
+        "--scenario",
+        "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/07-task-00-context-inventory-multi-5x4w-stag500-worker.json",
+        "--output-root",
+        "/root/client-harness/out/data/batch_run_1/task-00"
+      ]
+    },
+    {
+      "index": 8,
+      "client_key": "task-00-context-inventory",
+      "task_bucket": "task-00",
+      "run_key": "multi-5x4w-stag500",
+      "override_key": "request",
+      "generated_path": "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/08-task-00-context-inventory-multi-5x4w-stag500-request.json",
+      "scenario_name": "vps-docker-qwen3-32b8x2-multi-5x4w-stag500-request",
+      "session_prefix": "vps-docker-qwen3-32b8x2-multi-5x4w-stag500-request",
+      "task_output_root": "/root/client-harness/out/data/batch_run_1/task-00",
+      "overrides": {
+        "client.message": "",
+        "client.task_file": "/root/client-harness/tasks/task_00_context_inventory.md",
+        "runtime.instance_num": 1,
+        "load.concurrency": 4,
+        "load.requests_per_worker": 5,
+        "load.worker_stagger_ms": 500,
+        "client.session_mode": "per_request"
+      },
+      "command": [
+        "python3",
+        "-m",
+        "openclaw_harness",
+        "run",
+        "--scenario",
+        "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/08-task-00-context-inventory-multi-5x4w-stag500-request.json",
+        "--output-root",
+        "/root/client-harness/out/data/batch_run_1/task-00"
+      ]
+    },
+    {
+      "index": 9,
+      "client_key": "task-00-context-inventory",
+      "task_bucket": "task-00",
+      "run_key": "single-inst-5x4i",
+      "override_key": "worker",
+      "generated_path": "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/09-task-00-context-inventory-single-inst-5x4i-worker.json",
+      "scenario_name": "vps-docker-qwen3-32b8x2-single-inst-5x4i-worker",
+      "session_prefix": "vps-docker-qwen3-32b8x2-single-inst-5x4i-worker",
+      "task_output_root": "/root/client-harness/out/data/batch_run_1/task-00",
+      "overrides": {
+        "client.message": "",
+        "client.task_file": "/root/client-harness/tasks/task_00_context_inventory.md",
+        "runtime.instance_num": 4,
+        "load.concurrency": 1,
+        "load.requests_per_worker": 5,
+        "load.worker_stagger_ms": 0,
+        "client.session_mode": "per_worker"
+      },
+      "command": [
+        "python3",
+        "-m",
+        "openclaw_harness",
+        "run",
+        "--scenario",
+        "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/09-task-00-context-inventory-single-inst-5x4i-worker.json",
+        "--output-root",
+        "/root/client-harness/out/data/batch_run_1/task-00"
+      ]
+    },
+    {
+      "index": 10,
+      "client_key": "task-00-context-inventory",
+      "task_bucket": "task-00",
+      "run_key": "single-inst-5x4i",
+      "override_key": "request",
+      "generated_path": "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/10-task-00-context-inventory-single-inst-5x4i-request.json",
+      "scenario_name": "vps-docker-qwen3-32b8x2-single-inst-5x4i-request",
+      "session_prefix": "vps-docker-qwen3-32b8x2-single-inst-5x4i-request",
+      "task_output_root": "/root/client-harness/out/data/batch_run_1/task-00",
+      "overrides": {
+        "client.message": "",
+        "client.task_file": "/root/client-harness/tasks/task_00_context_inventory.md",
+        "runtime.instance_num": 4,
+        "load.concurrency": 1,
+        "load.requests_per_worker": 5,
+        "load.worker_stagger_ms": 0,
+        "client.session_mode": "per_request"
+      },
+      "command": [
+        "python3",
+        "-m",
+        "openclaw_harness",
+        "run",
+        "--scenario",
+        "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/10-task-00-context-inventory-single-inst-5x4i-request.json",
+        "--output-root",
+        "/root/client-harness/out/data/batch_run_1/task-00"
+      ]
+    },
+    {
+      "index": 11,
+      "client_key": "task-00-context-inventory",
+      "task_bucket": "task-00",
+      "run_key": "multi-inst-5x2ix2w-stag500",
+      "override_key": "worker",
+      "generated_path": "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/11-task-00-context-inventory-multi-inst-5x2ix2w-stag500-worker.json",
+      "scenario_name": "vps-docker-qwen3-32b8x2-multi-inst-5x2ix2w-stag500-worker",
+      "session_prefix": "vps-docker-qwen3-32b8x2-multi-inst-5x2ix2w-stag500-worker",
+      "task_output_root": "/root/client-harness/out/data/batch_run_1/task-00",
+      "overrides": {
+        "client.message": "",
+        "client.task_file": "/root/client-harness/tasks/task_00_context_inventory.md",
+        "runtime.instance_num": 2,
+        "load.concurrency": 2,
+        "load.requests_per_worker": 5,
+        "load.worker_stagger_ms": 500,
+        "client.session_mode": "per_worker"
+      },
+      "command": [
+        "python3",
+        "-m",
+        "openclaw_harness",
+        "run",
+        "--scenario",
+        "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/11-task-00-context-inventory-multi-inst-5x2ix2w-stag500-worker.json",
+        "--output-root",
+        "/root/client-harness/out/data/batch_run_1/task-00"
+      ]
+    },
+    {
+      "index": 12,
+      "client_key": "task-00-context-inventory",
+      "task_bucket": "task-00",
+      "run_key": "multi-inst-5x2ix2w-stag500",
+      "override_key": "request",
+      "generated_path": "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/12-task-00-context-inventory-multi-inst-5x2ix2w-stag500-request.json",
+      "scenario_name": "vps-docker-qwen3-32b8x2-multi-inst-5x2ix2w-stag500-request",
+      "session_prefix": "vps-docker-qwen3-32b8x2-multi-inst-5x2ix2w-stag500-request",
+      "task_output_root": "/root/client-harness/out/data/batch_run_1/task-00",
+      "overrides": {
+        "client.message": "",
+        "client.task_file": "/root/client-harness/tasks/task_00_context_inventory.md",
+        "runtime.instance_num": 2,
+        "load.concurrency": 2,
+        "load.requests_per_worker": 5,
+        "load.worker_stagger_ms": 500,
+        "client.session_mode": "per_request"
+      },
+      "command": [
+        "python3",
+        "-m",
+        "openclaw_harness",
+        "run",
+        "--scenario",
+        "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/12-task-00-context-inventory-multi-inst-5x2ix2w-stag500-request.json",
+        "--output-root",
+        "/root/client-harness/out/data/batch_run_1/task-00"
+      ]
+    },
+    {
+      "index": 13,
+      "client_key": "task-01-openclaw-comprehension",
+      "task_bucket": "task-01",
+      "run_key": "single-20",
+      "override_key": "worker",
+      "generated_path": "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/13-task-01-openclaw-comprehension-single-20-worker.json",
+      "scenario_name": "vps-docker-qwen3-32b8x2-single-20-worker",
+      "session_prefix": "vps-docker-qwen3-32b8x2-single-20-worker",
+      "task_output_root": "/root/client-harness/out/data/batch_run_1/task-01",
+      "overrides": {
+        "client.message": "",
+        "client.task_file": "/root/client-harness/tasks/task_01_openclaw_comprehension.md",
+        "runtime.instance_num": 1,
+        "load.concurrency": 1,
+        "load.requests_per_worker": 20,
+        "load.worker_stagger_ms": 0,
+        "client.session_mode": "per_worker"
+      },
+      "command": [
+        "python3",
+        "-m",
+        "openclaw_harness",
+        "run",
+        "--scenario",
+        "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/13-task-01-openclaw-comprehension-single-20-worker.json",
+        "--output-root",
+        "/root/client-harness/out/data/batch_run_1/task-01"
+      ]
+    },
+    {
+      "index": 14,
+      "client_key": "task-01-openclaw-comprehension",
+      "task_bucket": "task-01",
+      "run_key": "single-20",
+      "override_key": "request",
+      "generated_path": "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/14-task-01-openclaw-comprehension-single-20-request.json",
+      "scenario_name": "vps-docker-qwen3-32b8x2-single-20-request",
+      "session_prefix": "vps-docker-qwen3-32b8x2-single-20-request",
+      "task_output_root": "/root/client-harness/out/data/batch_run_1/task-01",
+      "overrides": {
+        "client.message": "",
+        "client.task_file": "/root/client-harness/tasks/task_01_openclaw_comprehension.md",
+        "runtime.instance_num": 1,
+        "load.concurrency": 1,
+        "load.requests_per_worker": 20,
+        "load.worker_stagger_ms": 0,
+        "client.session_mode": "per_request"
+      },
+      "command": [
+        "python3",
+        "-m",
+        "openclaw_harness",
+        "run",
+        "--scenario",
+        "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/14-task-01-openclaw-comprehension-single-20-request.json",
+        "--output-root",
+        "/root/client-harness/out/data/batch_run_1/task-01"
+      ]
+    },
+    {
+      "index": 15,
+      "client_key": "task-01-openclaw-comprehension",
+      "task_bucket": "task-01",
+      "run_key": "multi-5x4w-stag150",
+      "override_key": "worker",
+      "generated_path": "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/15-task-01-openclaw-comprehension-multi-5x4w-stag150-worker.json",
+      "scenario_name": "vps-docker-qwen3-32b8x2-multi-5x4w-stag150-worker",
+      "session_prefix": "vps-docker-qwen3-32b8x2-multi-5x4w-stag150-worker",
+      "task_output_root": "/root/client-harness/out/data/batch_run_1/task-01",
+      "overrides": {
+        "client.message": "",
+        "client.task_file": "/root/client-harness/tasks/task_01_openclaw_comprehension.md",
+        "runtime.instance_num": 1,
+        "load.concurrency": 4,
+        "load.requests_per_worker": 5,
+        "load.worker_stagger_ms": 150,
+        "client.session_mode": "per_worker"
+      },
+      "command": [
+        "python3",
+        "-m",
+        "openclaw_harness",
+        "run",
+        "--scenario",
+        "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/15-task-01-openclaw-comprehension-multi-5x4w-stag150-worker.json",
+        "--output-root",
+        "/root/client-harness/out/data/batch_run_1/task-01"
+      ]
+    },
+    {
+      "index": 16,
+      "client_key": "task-01-openclaw-comprehension",
+      "task_bucket": "task-01",
+      "run_key": "multi-5x4w-stag150",
+      "override_key": "request",
+      "generated_path": "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/16-task-01-openclaw-comprehension-multi-5x4w-stag150-request.json",
+      "scenario_name": "vps-docker-qwen3-32b8x2-multi-5x4w-stag150-request",
+      "session_prefix": "vps-docker-qwen3-32b8x2-multi-5x4w-stag150-request",
+      "task_output_root": "/root/client-harness/out/data/batch_run_1/task-01",
+      "overrides": {
+        "client.message": "",
+        "client.task_file": "/root/client-harness/tasks/task_01_openclaw_comprehension.md",
+        "runtime.instance_num": 1,
+        "load.concurrency": 4,
+        "load.requests_per_worker": 5,
+        "load.worker_stagger_ms": 150,
+        "client.session_mode": "per_request"
+      },
+      "command": [
+        "python3",
+        "-m",
+        "openclaw_harness",
+        "run",
+        "--scenario",
+        "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/16-task-01-openclaw-comprehension-multi-5x4w-stag150-request.json",
+        "--output-root",
+        "/root/client-harness/out/data/batch_run_1/task-01"
+      ]
+    },
+    {
+      "index": 17,
+      "client_key": "task-01-openclaw-comprehension",
+      "task_bucket": "task-01",
+      "run_key": "multi-5x4w-stag300",
+      "override_key": "worker",
+      "generated_path": "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/17-task-01-openclaw-comprehension-multi-5x4w-stag300-worker.json",
+      "scenario_name": "vps-docker-qwen3-32b8x2-multi-5x4w-stag300-worker",
+      "session_prefix": "vps-docker-qwen3-32b8x2-multi-5x4w-stag300-worker",
+      "task_output_root": "/root/client-harness/out/data/batch_run_1/task-01",
+      "overrides": {
+        "client.message": "",
+        "client.task_file": "/root/client-harness/tasks/task_01_openclaw_comprehension.md",
+        "runtime.instance_num": 1,
+        "load.concurrency": 4,
+        "load.requests_per_worker": 5,
+        "load.worker_stagger_ms": 300,
+        "client.session_mode": "per_worker"
+      },
+      "command": [
+        "python3",
+        "-m",
+        "openclaw_harness",
+        "run",
+        "--scenario",
+        "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/17-task-01-openclaw-comprehension-multi-5x4w-stag300-worker.json",
+        "--output-root",
+        "/root/client-harness/out/data/batch_run_1/task-01"
+      ]
+    },
+    {
+      "index": 18,
+      "client_key": "task-01-openclaw-comprehension",
+      "task_bucket": "task-01",
+      "run_key": "multi-5x4w-stag300",
+      "override_key": "request",
+      "generated_path": "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/18-task-01-openclaw-comprehension-multi-5x4w-stag300-request.json",
+      "scenario_name": "vps-docker-qwen3-32b8x2-multi-5x4w-stag300-request",
+      "session_prefix": "vps-docker-qwen3-32b8x2-multi-5x4w-stag300-request",
+      "task_output_root": "/root/client-harness/out/data/batch_run_1/task-01",
+      "overrides": {
+        "client.message": "",
+        "client.task_file": "/root/client-harness/tasks/task_01_openclaw_comprehension.md",
+        "runtime.instance_num": 1,
+        "load.concurrency": 4,
+        "load.requests_per_worker": 5,
+        "load.worker_stagger_ms": 300,
+        "client.session_mode": "per_request"
+      },
+      "command": [
+        "python3",
+        "-m",
+        "openclaw_harness",
+        "run",
+        "--scenario",
+        "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/18-task-01-openclaw-comprehension-multi-5x4w-stag300-request.json",
+        "--output-root",
+        "/root/client-harness/out/data/batch_run_1/task-01"
+      ]
+    },
+    {
+      "index": 19,
+      "client_key": "task-01-openclaw-comprehension",
+      "task_bucket": "task-01",
+      "run_key": "multi-5x4w-stag500",
+      "override_key": "worker",
+      "generated_path": "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/19-task-01-openclaw-comprehension-multi-5x4w-stag500-worker.json",
+      "scenario_name": "vps-docker-qwen3-32b8x2-multi-5x4w-stag500-worker",
+      "session_prefix": "vps-docker-qwen3-32b8x2-multi-5x4w-stag500-worker",
+      "task_output_root": "/root/client-harness/out/data/batch_run_1/task-01",
+      "overrides": {
+        "client.message": "",
+        "client.task_file": "/root/client-harness/tasks/task_01_openclaw_comprehension.md",
+        "runtime.instance_num": 1,
+        "load.concurrency": 4,
+        "load.requests_per_worker": 5,
+        "load.worker_stagger_ms": 500,
+        "client.session_mode": "per_worker"
+      },
+      "command": [
+        "python3",
+        "-m",
+        "openclaw_harness",
+        "run",
+        "--scenario",
+        "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/19-task-01-openclaw-comprehension-multi-5x4w-stag500-worker.json",
+        "--output-root",
+        "/root/client-harness/out/data/batch_run_1/task-01"
+      ]
+    },
+    {
+      "index": 20,
+      "client_key": "task-01-openclaw-comprehension",
+      "task_bucket": "task-01",
+      "run_key": "multi-5x4w-stag500",
+      "override_key": "request",
+      "generated_path": "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/20-task-01-openclaw-comprehension-multi-5x4w-stag500-request.json",
+      "scenario_name": "vps-docker-qwen3-32b8x2-multi-5x4w-stag500-request",
+      "session_prefix": "vps-docker-qwen3-32b8x2-multi-5x4w-stag500-request",
+      "task_output_root": "/root/client-harness/out/data/batch_run_1/task-01",
+      "overrides": {
+        "client.message": "",
+        "client.task_file": "/root/client-harness/tasks/task_01_openclaw_comprehension.md",
+        "runtime.instance_num": 1,
+        "load.concurrency": 4,
+        "load.requests_per_worker": 5,
+        "load.worker_stagger_ms": 500,
+        "client.session_mode": "per_request"
+      },
+      "command": [
+        "python3",
+        "-m",
+        "openclaw_harness",
+        "run",
+        "--scenario",
+        "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/20-task-01-openclaw-comprehension-multi-5x4w-stag500-request.json",
+        "--output-root",
+        "/root/client-harness/out/data/batch_run_1/task-01"
+      ]
+    },
+    {
+      "index": 21,
+      "client_key": "task-01-openclaw-comprehension",
+      "task_bucket": "task-01",
+      "run_key": "single-inst-5x4i",
+      "override_key": "worker",
+      "generated_path": "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/21-task-01-openclaw-comprehension-single-inst-5x4i-worker.json",
+      "scenario_name": "vps-docker-qwen3-32b8x2-single-inst-5x4i-worker",
+      "session_prefix": "vps-docker-qwen3-32b8x2-single-inst-5x4i-worker",
+      "task_output_root": "/root/client-harness/out/data/batch_run_1/task-01",
+      "overrides": {
+        "client.message": "",
+        "client.task_file": "/root/client-harness/tasks/task_01_openclaw_comprehension.md",
+        "runtime.instance_num": 4,
+        "load.concurrency": 1,
+        "load.requests_per_worker": 5,
+        "load.worker_stagger_ms": 0,
+        "client.session_mode": "per_worker"
+      },
+      "command": [
+        "python3",
+        "-m",
+        "openclaw_harness",
+        "run",
+        "--scenario",
+        "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/21-task-01-openclaw-comprehension-single-inst-5x4i-worker.json",
+        "--output-root",
+        "/root/client-harness/out/data/batch_run_1/task-01"
+      ]
+    },
+    {
+      "index": 22,
+      "client_key": "task-01-openclaw-comprehension",
+      "task_bucket": "task-01",
+      "run_key": "single-inst-5x4i",
+      "override_key": "request",
+      "generated_path": "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/22-task-01-openclaw-comprehension-single-inst-5x4i-request.json",
+      "scenario_name": "vps-docker-qwen3-32b8x2-single-inst-5x4i-request",
+      "session_prefix": "vps-docker-qwen3-32b8x2-single-inst-5x4i-request",
+      "task_output_root": "/root/client-harness/out/data/batch_run_1/task-01",
+      "overrides": {
+        "client.message": "",
+        "client.task_file": "/root/client-harness/tasks/task_01_openclaw_comprehension.md",
+        "runtime.instance_num": 4,
+        "load.concurrency": 1,
+        "load.requests_per_worker": 5,
+        "load.worker_stagger_ms": 0,
+        "client.session_mode": "per_request"
+      },
+      "command": [
+        "python3",
+        "-m",
+        "openclaw_harness",
+        "run",
+        "--scenario",
+        "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/22-task-01-openclaw-comprehension-single-inst-5x4i-request.json",
+        "--output-root",
+        "/root/client-harness/out/data/batch_run_1/task-01"
+      ]
+    },
+    {
+      "index": 23,
+      "client_key": "task-01-openclaw-comprehension",
+      "task_bucket": "task-01",
+      "run_key": "multi-inst-5x2ix2w-stag500",
+      "override_key": "worker",
+      "generated_path": "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/23-task-01-openclaw-comprehension-multi-inst-5x2ix2w-stag500-worker.json",
+      "scenario_name": "vps-docker-qwen3-32b8x2-multi-inst-5x2ix2w-stag500-worker",
+      "session_prefix": "vps-docker-qwen3-32b8x2-multi-inst-5x2ix2w-stag500-worker",
+      "task_output_root": "/root/client-harness/out/data/batch_run_1/task-01",
+      "overrides": {
+        "client.message": "",
+        "client.task_file": "/root/client-harness/tasks/task_01_openclaw_comprehension.md",
+        "runtime.instance_num": 2,
+        "load.concurrency": 2,
+        "load.requests_per_worker": 5,
+        "load.worker_stagger_ms": 500,
+        "client.session_mode": "per_worker"
+      },
+      "command": [
+        "python3",
+        "-m",
+        "openclaw_harness",
+        "run",
+        "--scenario",
+        "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/23-task-01-openclaw-comprehension-multi-inst-5x2ix2w-stag500-worker.json",
+        "--output-root",
+        "/root/client-harness/out/data/batch_run_1/task-01"
+      ]
+    },
+    {
+      "index": 24,
+      "client_key": "task-01-openclaw-comprehension",
+      "task_bucket": "task-01",
+      "run_key": "multi-inst-5x2ix2w-stag500",
+      "override_key": "request",
+      "generated_path": "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/24-task-01-openclaw-comprehension-multi-inst-5x2ix2w-stag500-request.json",
+      "scenario_name": "vps-docker-qwen3-32b8x2-multi-inst-5x2ix2w-stag500-request",
+      "session_prefix": "vps-docker-qwen3-32b8x2-multi-inst-5x2ix2w-stag500-request",
+      "task_output_root": "/root/client-harness/out/data/batch_run_1/task-01",
+      "overrides": {
+        "client.message": "",
+        "client.task_file": "/root/client-harness/tasks/task_01_openclaw_comprehension.md",
+        "runtime.instance_num": 2,
+        "load.concurrency": 2,
+        "load.requests_per_worker": 5,
+        "load.worker_stagger_ms": 500,
+        "client.session_mode": "per_request"
+      },
+      "command": [
+        "python3",
+        "-m",
+        "openclaw_harness",
+        "run",
+        "--scenario",
+        "/root/client-harness/.state/generated_scenarios/batch_harness/20260416T135900722228Z/24-task-01-openclaw-comprehension-multi-inst-5x2ix2w-stag500-request.json",
+        "--output-root",
+        "/root/client-harness/out/data/batch_run_1/task-01"
+      ]
+    }
+  ]
+}

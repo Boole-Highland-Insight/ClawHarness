@@ -1,0 +1,184 @@
+{
+  "runs": [
+    {
+      "index": 1,
+      "scenario_key": "single",
+      "mode_key": "worker",
+      "template_path": "/root/client-harness/scenarios/vps/vps_docker_single_light.json",
+      "generated_path": "/root/client-harness/.state/generated_scenarios/hw_cloud_all_experiments/20260414T103605Z/01_single_worker.json",
+      "scenario_name": "vps-docker-single-task-00-500-light-worker",
+      "session_prefix": "vps-docker-single-task-00-500-light-worker",
+      "session_mode": "per_worker",
+      "command": [
+        "/root/.venv/bin/python3",
+        "-m",
+        "openclaw_harness",
+        "run",
+        "--scenario",
+        "/root/client-harness/.state/generated_scenarios/hw_cloud_all_experiments/20260414T103605Z/01_single_worker.json",
+        "--output-root",
+        "/root/client-harness/out"
+      ]
+    },
+    {
+      "index": 2,
+      "scenario_key": "single",
+      "mode_key": "request",
+      "template_path": "/root/client-harness/scenarios/vps/vps_docker_single_light.json",
+      "generated_path": "/root/client-harness/.state/generated_scenarios/hw_cloud_all_experiments/20260414T103605Z/02_single_request.json",
+      "scenario_name": "vps-docker-single-task-00-500-light-request",
+      "session_prefix": "vps-docker-single-task-00-500-light-request",
+      "session_mode": "per_request",
+      "command": [
+        "/root/.venv/bin/python3",
+        "-m",
+        "openclaw_harness",
+        "run",
+        "--scenario",
+        "/root/client-harness/.state/generated_scenarios/hw_cloud_all_experiments/20260414T103605Z/02_single_request.json",
+        "--output-root",
+        "/root/client-harness/out"
+      ]
+    },
+    {
+      "index": 3,
+      "scenario_key": "single",
+      "mode_key": "shared",
+      "template_path": "/root/client-harness/scenarios/vps/vps_docker_single_light.json",
+      "generated_path": "/root/client-harness/.state/generated_scenarios/hw_cloud_all_experiments/20260414T103605Z/03_single_shared.json",
+      "scenario_name": "vps-docker-single-task-00-500-light-shared",
+      "session_prefix": "vps-docker-single-task-00-500-light-shared",
+      "session_mode": "shared",
+      "command": [
+        "/root/.venv/bin/python3",
+        "-m",
+        "openclaw_harness",
+        "run",
+        "--scenario",
+        "/root/client-harness/.state/generated_scenarios/hw_cloud_all_experiments/20260414T103605Z/03_single_shared.json",
+        "--output-root",
+        "/root/client-harness/out"
+      ]
+    },
+    {
+      "index": 4,
+      "scenario_key": "multi_stag300",
+      "mode_key": "worker",
+      "template_path": "/root/client-harness/scenarios/vps/vps_docker_multi_10x50_stag300.json",
+      "generated_path": "/root/client-harness/.state/generated_scenarios/hw_cloud_all_experiments/20260414T103605Z/04_multi_stag300_worker.json",
+      "scenario_name": "vps-docker-multi-task-00-500-light-stag300-worker",
+      "session_prefix": "vps-docker-multi-task-00-500-light-stag300-worker",
+      "session_mode": "per_worker",
+      "command": [
+        "/root/.venv/bin/python3",
+        "-m",
+        "openclaw_harness",
+        "run",
+        "--scenario",
+        "/root/client-harness/.state/generated_scenarios/hw_cloud_all_experiments/20260414T103605Z/04_multi_stag300_worker.json",
+        "--output-root",
+        "/root/client-harness/out"
+      ]
+    },
+    {
+      "index": 5,
+      "scenario_key": "multi_stag300",
+      "mode_key": "request",
+      "template_path": "/root/client-harness/scenarios/vps/vps_docker_multi_10x50_stag300.json",
+      "generated_path": "/root/client-harness/.state/generated_scenarios/hw_cloud_all_experiments/20260414T103605Z/05_multi_stag300_request.json",
+      "scenario_name": "vps-docker-multi-task-00-500-light-stag300-request",
+      "session_prefix": "vps-docker-multi-task-00-500-light-stag300-request",
+      "session_mode": "per_request",
+      "command": [
+        "/root/.venv/bin/python3",
+        "-m",
+        "openclaw_harness",
+        "run",
+        "--scenario",
+        "/root/client-harness/.state/generated_scenarios/hw_cloud_all_experiments/20260414T103605Z/05_multi_stag300_request.json",
+        "--output-root",
+        "/root/client-harness/out"
+      ]
+    },
+    {
+      "index": 6,
+      "scenario_key": "multi_stag300",
+      "mode_key": "shared",
+      "template_path": "/root/client-harness/scenarios/vps/vps_docker_multi_10x50_stag300.json",
+      "generated_path": "/root/client-harness/.state/generated_scenarios/hw_cloud_all_experiments/20260414T103605Z/06_multi_stag300_shared.json",
+      "scenario_name": "vps-docker-multi-task-00-500-light-stag300-shared",
+      "session_prefix": "vps-docker-multi-task-00-500-light-stag300-shared",
+      "session_mode": "shared",
+      "command": [
+        "/root/.venv/bin/python3",
+        "-m",
+        "openclaw_harness",
+        "run",
+        "--scenario",
+        "/root/client-harness/.state/generated_scenarios/hw_cloud_all_experiments/20260414T103605Z/06_multi_stag300_shared.json",
+        "--output-root",
+        "/root/client-harness/out"
+      ]
+    },
+    {
+      "index": 7,
+      "scenario_key": "multi_stag150",
+      "mode_key": "worker",
+      "template_path": "/root/client-harness/scenarios/vps/vps_docker_multi_10x50_stag150.json",
+      "generated_path": "/root/client-harness/.state/generated_scenarios/hw_cloud_all_experiments/20260414T103605Z/07_multi_stag150_worker.json",
+      "scenario_name": "vps-docker-multi-task-00-500-light-stag150-worker",
+      "session_prefix": "vps-docker-multi-task-00-500-light-stag150-worker",
+      "session_mode": "per_worker",
+      "command": [
+        "/root/.venv/bin/python3",
+        "-m",
+        "openclaw_harness",
+        "run",
+        "--scenario",
+        "/root/client-harness/.state/generated_scenarios/hw_cloud_all_experiments/20260414T103605Z/07_multi_stag150_worker.json",
+        "--output-root",
+        "/root/client-harness/out"
+      ]
+    },
+    {
+      "index": 8,
+      "scenario_key": "multi_stag150",
+      "mode_key": "request",
+      "template_path": "/root/client-harness/scenarios/vps/vps_docker_multi_10x50_stag150.json",
+      "generated_path": "/root/client-harness/.state/generated_scenarios/hw_cloud_all_experiments/20260414T103605Z/08_multi_stag150_request.json",
+      "scenario_name": "vps-docker-multi-task-00-500-light-stag150-request",
+      "session_prefix": "vps-docker-multi-task-00-500-light-stag150-request",
+      "session_mode": "per_request",
+      "command": [
+        "/root/.venv/bin/python3",
+        "-m",
+        "openclaw_harness",
+        "run",
+        "--scenario",
+        "/root/client-harness/.state/generated_scenarios/hw_cloud_all_experiments/20260414T103605Z/08_multi_stag150_request.json",
+        "--output-root",
+        "/root/client-harness/out"
+      ]
+    },
+    {
+      "index": 9,
+      "scenario_key": "multi_stag150",
+      "mode_key": "shared",
+      "template_path": "/root/client-harness/scenarios/vps/vps_docker_multi_10x50_stag150.json",
+      "generated_path": "/root/client-harness/.state/generated_scenarios/hw_cloud_all_experiments/20260414T103605Z/09_multi_stag150_shared.json",
+      "scenario_name": "vps-docker-multi-task-00-500-light-stag150-shared",
+      "session_prefix": "vps-docker-multi-task-00-500-light-stag150-shared",
+      "session_mode": "shared",
+      "command": [
+        "/root/.venv/bin/python3",
+        "-m",
+        "openclaw_harness",
+        "run",
+        "--scenario",
+        "/root/client-harness/.state/generated_scenarios/hw_cloud_all_experiments/20260414T103605Z/09_multi_stag150_shared.json",
+        "--output-root",
+        "/root/client-harness/out"
+      ]
+    }
+  ]
+}
