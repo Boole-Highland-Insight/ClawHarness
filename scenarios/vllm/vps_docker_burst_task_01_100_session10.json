@@ -2,7 +2,8 @@
   "name": "vps-docker-burst-qwen32b-01-100-session10",
   "runtime": {
     "kind": "docker",
-    "image": "openclaw:bench-vps",
+    "image": "dr34m/openclaw:latest",
+    "repo_root": "/root/Zehao/openclaw",
     "container_name_base": "openclaw-bench-vps-v2",
     "host": "127.0.0.1",
     "host_port": 19189,
@@ -10,7 +11,7 @@
     "network_mode": "host",
     "gateway_bind": "loopback",
     "gateway_token": "openclaw-bench-token",
-    "build_image_if_missing": true,
+    "build_image_if_missing": false,
     "force_rebuild": false,
     "skip_channels": true,
     "keep_container": false,
@@ -22,7 +23,7 @@
       "agents": {
         "defaults": {
           "model": {
-            "primary": "vllm/qwen3-32b"
+            "primary": "vllm/qwen3.5-27b"
           }
         }
       },
@@ -34,8 +35,8 @@
             "api": "openai-completions",
             "models": [
               {
-                "id": "qwen3-32b",
-                "name": "Local vLLM Qwen3-32B",
+                "id": "qwen3.5-27b",
+                "name": "Local vLLM Qwen3.5-27B",
                 "reasoning": false,
                 "input": [
                   "text"
@@ -74,7 +75,7 @@
     "max_in_flight": 100,
     "worker_stagger_ms": 0,
     "request_pause_ms": 0,
-    "connect_concurrency": 100
+    "connect_concurrency": 10
   },
   "collectors": {
     "docker_stats": {

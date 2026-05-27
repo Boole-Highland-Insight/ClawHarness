@@ -72,6 +72,11 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--config",
+        default=str(DEFAULT_CONFIG_PATH),
+        help="Path to the batch JSON config file.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Only generate scenarios and print commands without launching the harness.",
@@ -665,7 +670,7 @@ def run_batch(
 
 def main() -> int:
     args = parse_args()
-    config = load_batch_config(DEFAULT_CONFIG_PATH)
+    config = load_batch_config(resolve_repo_path(args.config))
 
     batch_dir = config.generated_root / build_batch_id()
     batch_dir.mkdir(parents=True, exist_ok=True)

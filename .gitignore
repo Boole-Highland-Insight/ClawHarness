@@ -7,3 +7,4 @@ res/*
 !res/task-01/**
 __pycache__/
 .pytest_cache/
+.state/

@@ -1,7 +1,7 @@
 {
   "template_scenario": "scenarios/vllm/vps_docker_single_light.json",
   "basename": "vps-docker-qwen3-235b",
-  "output_root": "out/batch_run_5",
+  "output_root": "out/batch_run_6",
   "generated_root": ".state/generated_scenarios/batch_harness",
   "python_bin": "python3",
   "run_tag": "",

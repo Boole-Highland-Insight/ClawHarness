@@ -620,9 +620,14 @@ class DockerRuntimeManager:
         for openclaw_index, port in enumerate(port_values):
             state_dir = shlex.quote(self._container_state_dir(openclaw_index))
             workspace_dir = shlex.quote(self._container_workspace_dir(openclaw_index))
+            config_path = shlex.quote(f"{self._container_state_dir(openclaw_index)}/openclaw.json")
             lines.append(f"mkdir -p {state_dir} {workspace_dir}")
             lines.append(
-                f"OPENCLAW_STATE_DIR={state_dir} node dist/index.js gateway --allow-unconfigured --bind {bind} --port {port} &",
+                (
+                    f"OPENCLAW_STATE_DIR={state_dir} "
+                    f"OPENCLAW_CONFIG_PATH={config_path} "
+                    f"node dist/index.js gateway --allow-unconfigured --bind {bind} --port {port} &"
+                ),
             )
             lines.append('pids="$pids $!"')
         lines.extend(

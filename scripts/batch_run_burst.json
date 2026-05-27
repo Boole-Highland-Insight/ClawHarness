@@ -1,0 +1,91 @@
+{
+  "template_scenario": "scenarios/vllm/vps_docker_burst_task_01_100_session10.json",
+  "basename": "vps-docker-burst-smoke",
+  "output_root": "out/batch_run_burst_smoke",
+  "generated_root": ".state/generated_scenarios/batch_harness_burst",
+  "python_bin": "/root/Zehao/ClawHarness/.venv/bin/python",
+  "run_tag": "smoke",
+  "keep_runtime": false,
+  "continue_on_error": false,
+  "skip_completed": true,
+  "dry_run": false,
+  "base_overrides": {
+    "client.message": "/context list",
+    "client.task_file": "",
+    "client.wait_timeout_ms": 60000,
+    "client.send_timeout_ms": 30000,
+    "runtime.image": "dr34m/openclaw:latest",
+    "runtime.build_image_if_missing": false,
+    "runtime.skip_channels": true,
+    "load.dispatch_mode": "burst",
+    "load.total_requests": 100,
+    "load.request_pause_ms": 0,
+    "load.worker_stagger_ms": 0
+  },
+  "client_variants": [
+    {
+      "key": "context-list-smoke",
+      "task_file": "",
+      "message": "/context list"
+    }
+  ],
+  "run_variants": [
+    {
+      "key": "burst-serial-100",
+      "overrides": {
+        "runtime.instance_num": 1,
+        "runtime.openclaw_num_per_instance": 1,
+        "load.concurrency": 1,
+        "load.requests_per_worker": 100,
+        "load.max_in_flight": 1,
+        "load.connect_concurrency": 1,
+        "client.session_mode": "shared",
+        "client.session_pool_size": 1
+      }
+    },
+    {
+      "key": "burst-single-container-single-instance-10w",
+      "overrides": {
+        "runtime.instance_num": 1,
+        "runtime.openclaw_num_per_instance": 1,
+        "load.concurrency": 10,
+        "load.requests_per_worker": 10,
+        "load.max_in_flight": 100,
+        "load.connect_concurrency": 10,
+        "client.session_mode": "per_worker",
+        "client.session_pool_size": 10
+      }
+    },
+    {
+      "key": "burst-single-container-multi-openclaw-2x5w",
+      "overrides": {
+        "runtime.instance_num": 1,
+        "runtime.openclaw_num_per_instance": 2,
+        "runtime.host_port": 19289,
+        "runtime.container_port": 19289,
+        "load.concurrency": 10,
+        "load.requests_per_worker": 10,
+        "load.max_in_flight": 100,
+        "load.connect_concurrency": 10,
+        "client.session_mode": "per_worker",
+        "client.session_pool_size": 10
+      }
+    },
+    {
+      "key": "burst-multi-container-multi-openclaw-2x2x5w",
+      "overrides": {
+        "runtime.instance_num": 2,
+        "runtime.openclaw_num_per_instance": 2,
+        "runtime.host_port": 19389,
+        "runtime.container_port": 19389,
+        "load.concurrency": 5,
+        "load.requests_per_worker": 10,
+        "load.total_requests": 50,
+        "load.max_in_flight": 50,
+        "load.connect_concurrency": 5,
+        "client.session_mode": "per_worker",
+        "client.session_pool_size": 5
+      }
+    }
+  ]
+}

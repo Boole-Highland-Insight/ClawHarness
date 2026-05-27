@@ -47,7 +47,7 @@ class GatewayClient:
     async def connect(self) -> float:
         started = perf_counter_ns()
         last_error: Exception | None = None
-        for attempt in range(3):
+        for attempt in range(8):
             try:
                 await self.close()
                 loop = asyncio.get_running_loop()
@@ -109,9 +109,9 @@ class GatewayClient:
                 return (perf_counter_ns() - started) / 1_000_000.0
             except (TimeoutError, asyncio.TimeoutError, OSError, websockets.WebSocketException, GatewayError) as exc:
                 last_error = exc
-                if attempt >= 2:
+                if attempt >= 7:
                     break
-                await asyncio.sleep(0.5 * (attempt + 1))
+                await asyncio.sleep(min(4.0, 0.5 * (attempt + 1)))
         assert last_error is not None
         raise last_error
 
