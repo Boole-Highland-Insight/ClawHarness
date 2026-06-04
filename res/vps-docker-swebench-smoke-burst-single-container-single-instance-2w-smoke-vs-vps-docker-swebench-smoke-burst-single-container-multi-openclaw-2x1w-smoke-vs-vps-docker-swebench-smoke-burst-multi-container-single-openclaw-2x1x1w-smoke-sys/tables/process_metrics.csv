@@ -1,0 +1,4 @@
+scenario,cpu_percent,rss_kib,kb_wr_per_s,iodelay,cswch_per_s,nvcswch_per_s
+single-instance-2w,93.16666666666667,485153.3333333333,17287.333333333332,0.0,51.5,84.83333333333333
+single-container-2x1w,,,,,,
+multi-container-2x1x1w,,,,,,

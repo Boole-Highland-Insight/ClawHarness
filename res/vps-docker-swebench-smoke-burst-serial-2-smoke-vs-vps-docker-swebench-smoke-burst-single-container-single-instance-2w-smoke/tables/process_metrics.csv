@@ -1,0 +1,3 @@
+scenario,cpu_percent,rss_kib,kb_wr_per_s,iodelay,cswch_per_s,nvcswch_per_s
+vps-docker-swebench-smoke-burst-serial-2-smoke,94.10333333333334,486119.3333333333,17271.788333333334,0.0,52.416666666666664,48.211666666666666
+vps-docker-swebench-smoke-burst-single-container-single-instance-2w-smoke,93.16666666666667,485153.3333333333,17287.333333333332,0.0,51.5,84.83333333333333

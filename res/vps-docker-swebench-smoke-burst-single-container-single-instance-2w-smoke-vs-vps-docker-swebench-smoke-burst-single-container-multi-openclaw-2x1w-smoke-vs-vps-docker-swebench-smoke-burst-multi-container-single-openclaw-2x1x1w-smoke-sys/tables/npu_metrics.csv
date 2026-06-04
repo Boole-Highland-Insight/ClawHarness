@@ -1,0 +1,4 @@
+scenario,utilization_pct,hbm_usage_pct,aicore_usage_pct,aivector_usage_pct,aicpu_usage_pct,ctrlcpu_usage_pct
+single-instance-2w,,,,,,
+single-container-2x1w,,,,,,
+multi-container-2x1x1w,,,,,,

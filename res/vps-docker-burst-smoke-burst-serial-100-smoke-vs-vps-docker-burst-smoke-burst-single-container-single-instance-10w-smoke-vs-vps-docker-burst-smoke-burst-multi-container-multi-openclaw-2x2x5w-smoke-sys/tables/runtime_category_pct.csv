@@ -1,0 +1,12 @@
+,serial-100,1c1i-10w,2c2oc-2x5w
+fs_worker_exec,,,
+fs_callback,,,
+event_loop_poll,,,
+microtask,,,
+futex_sync,,,
+worker_message,,,
+json_parse,,,
+libuv_worker_other,,,
+gateway_main_other,,,
+v8_worker,,,
+other,,,

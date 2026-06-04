@@ -5,6 +5,9 @@ out-log/
 res/*
 !res/task-01/
 !res/task-01/**
+!res/vps-*/
+!res/vps-*/**
+!res/swebench_*
 __pycache__/
 .pytest_cache/
 .state/

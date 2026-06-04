@@ -1,0 +1,4 @@
+scenario,utilization_pct,hbm_usage_pct,aicore_usage_pct,aivector_usage_pct,aicpu_usage_pct,ctrlcpu_usage_pct
+串行,,,,,,
+单容器单实例2worker,,,,,,
+单容器双openclaw,,,,,,

@@ -1,0 +1,6 @@
+,serial-100,1c1i-10w,2c2oc-2x5w
+fs_async,,,
+fs_callback,,,
+promise_callback,,,
+event_loop_immediate,,,
+event_loop_timers,,,

@@ -1,0 +1,3 @@
+scenario,docker_cpu_peak,docker_cpu_peak_t_sec,docker_mem_peak,docker_mem_peak_t_sec,pidstat_cpu_peak,pidstat_cpu_peak_t_sec,pidstat_rss_peak,pidstat_rss_peak_t_sec,iostat_pct_util_peak,iostat_pct_util_peak_t_sec,iostat_w_await_peak,iostat_w_await_peak_t_sec,vmstat_interrupts_peak,vmstat_interrupts_peak_t_sec,vmstat_context_switches_peak,vmstat_context_switches_peak_t_sec,npu_utilization_peak,npu_utilization_peak_t_sec,npu_hbm_usage_peak,npu_hbm_usage_peak_t_sec,perf_context_switches_peak,perf_context_switches_peak_t_sec
+vps-docker-swebench-smoke-burst-serial-2-smoke,137.83,0.0,0.02,2.529428,153.0,2.0,537868.0,5.0,4.0,64.0,4.84,65.0,723917.0,7.0,1345255.0,7.0,,,,,,
+vps-docker-swebench-smoke-burst-multi-container-single-openclaw-2x1x1w-smoke,,,,,,,,,,,,,,,,,,,,,,

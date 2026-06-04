@@ -1,0 +1,10 @@
+,serial-100,1c1i-10w,2c2oc-2x5w
+openat,,,
+statx,,,
+newfstatat,,,
+pread64,,,
+clone,,,
+sched_yield,,,
+futex,,,
+read,,,
+write,,,
